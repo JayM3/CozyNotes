@@ -1,0 +1,87 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { ArchiveRestore, ArrowRight, Check, Plus, Search, StickyNote, Trash2, X } from "lucide-react";
+import { notesApi, paperColors } from "./api";
+import type { LibraryFilter, View } from "./api";
+import { useLibrarySearch } from "./useLibrarySearch";
+
+export function Library() {
+  const [view, setView] = useState<View>("notes");
+  const [filters, setFilters] = useState<Record<View, LibraryFilter>>({ notes: { query: "", color: null }, trash: { query: "", color: null } });
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const filter = filters[view];
+  const { notes, error, loading, refresh } = useLibrarySearch(view, filter.query, filter.color);
+  const search = useRef<HTMLInputElement>(null);
+  const focusSearch = useCallback(() => { search.current?.focus(); search.current?.select(); }, []);
+  const create = useCallback(async () => {
+    setBusy(true);
+    try { await notesApi.create(); await refresh(); setActionError(""); }
+    catch { setActionError("Couldn't create a note. Check local storage and retry."); }
+    finally { setBusy(false); }
+  }, [refresh]);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      if (event.key.toLowerCase() === "f") { event.preventDefault(); focusSearch(); }
+      if (event.key.toLowerCase() === "n") { event.preventDefault(); void create(); }
+      if (event.key.toLowerCase() === "w") { event.preventDefault(); void getCurrentWindow().close().catch(() => setActionError("Couldn't close the library.")); }
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [create, focusSearch]);
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen("library-focus-search", focusSearch).then(dispose => { if (cancelled) dispose(); else unlisten = dispose; }).catch(() => undefined);
+    if (new URLSearchParams(window.location.search).has("focusSearch")) focusSearch();
+    return () => { cancelled = true; unlisten?.(); };
+  }, [focusSearch]);
+  const updateFilter = (change: Partial<LibraryFilter>) => setFilters(current => ({ ...current, [view]: { ...current[view], ...change } }));
+  const actOnNote = async (action: () => Promise<unknown>, message: string) => {
+    try { await action(); setActionError(""); await refresh(); }
+    catch { setActionError(message); }
+  };
+  const purge = (id: string) => {
+    if (window.confirm("Permanently delete this note? This cannot be undone.")) void actOnNote(() => notesApi.purge(id), "Couldn't permanently delete this note.");
+  };
+  const emptyTrash = () => {
+    if (window.confirm("Permanently delete every note in Trash? This cannot be undone.")) void actOnNote(notesApi.emptyTrash, "Couldn't empty Trash.");
+  };
+  return <main className="library-shell">
+    <aside className="rail" data-tauri-drag-region>
+      <div className="brand" data-tauri-drag-region><span className="brand-mark" aria-hidden="true" data-tauri-drag-region>c</span><span data-tauri-drag-region>CozyNotes</span></div>
+      <button className="new-note" onClick={() => void create()} disabled={busy} aria-label="New note" title="New note"><Plus size={17} /> New note</button>
+      <nav aria-label="Library">
+        <button className={view === "notes" ? "nav-item active" : "nav-item"} aria-current={view === "notes" ? "page" : undefined} aria-label="Notes" title="Notes" onClick={() => setView("notes")}><StickyNote size={16} /> Notes</button>
+        <button className={view === "trash" ? "nav-item active" : "nav-item"} aria-current={view === "trash" ? "page" : undefined} aria-label="Trash" title="Trash" onClick={() => setView("trash")}><Trash2 size={16} /> Trash</button>
+      </nav>
+      <div className="rail-foot"><span className="local-indicator" /> Stored on this device</div>
+    </aside>
+    <section className="library-content">
+      <header className="library-header" data-tauri-drag-region>
+        <div data-tauri-drag-region><h1 data-tauri-drag-region>{view === "notes" ? "Notes" : "Trash"}</h1></div>
+        <div className="header-actions">{view === "trash" && <button className="text-action empty-trash" onClick={emptyTrash}>Empty Trash</button>}<button className="icon-button" aria-label="Close library" title="Close library" onClick={() => { void getCurrentWindow().close().catch(() => setActionError("Couldn't close the library.")); }}><X size={17} /></button></div>
+      </header>
+      <label className="search-box"><Search size={17} /><input ref={search} type="search" aria-label={view === "notes" ? "Search notes" : "Search trash"} placeholder={view === "notes" ? "Search your notes" : "Search trash"} value={filter.query} onChange={event => updateFilter({ query: event.target.value })} /></label>
+      <div className="color-filters" role="group" aria-label="Filter by paper color">
+        <button className="all-colors" aria-pressed={filter.color === null} onClick={() => updateFilter({ color: null })}>All colors</button>
+        {paperColors.map(color => <button key={color} className={`filter-swatch paper-${color}`} aria-label={`${color[0].toUpperCase()}${color.slice(1)} paper`} title={`${color[0].toUpperCase()}${color.slice(1)} paper`} aria-pressed={filter.color === color} onClick={() => updateFilter({ color })}><span className="swatch-face">{filter.color === color && <Check size={14} />}</span></button>)}
+      </div>
+      {(actionError || error) && <p className="error-banner" role="alert">{actionError || error} {error && <button className="text-action" onClick={() => void refresh()}>Retry</button>}</p>}
+      <div className="list-heading"><span role="status">{loading ? "Searching..." : `${notes.length} ${notes.length === 1 ? "note" : "notes"}`}</span><span>Recently edited</span></div>
+      <div className="note-list" aria-busy={loading}>
+        {notes.map(note => <article className={`note-row paper-${note.color}`} key={note.id}>
+          <button className="note-open" onClick={() => { if (view === "notes") void actOnNote(() => notesApi.open(note.id), "Couldn't open this note."); }} disabled={view === "trash"}>
+            <span className="note-title">{note.title}</span><span className="note-preview">{note.snippet.length ? note.snippet.map((segment, index) => segment.matched ? <mark key={index}>{segment.text}</mark> : <span key={index}>{segment.text}</span>) : note.preview || "No text yet"}</span>
+            <time dateTime={new Date(note.updatedAt).toISOString()}>{new Date(note.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</time>
+          </button>
+          {view === "trash" && <><button className="row-action" onClick={() => void actOnNote(() => notesApi.restore(note.id), "Couldn't restore this note.")} aria-label={`Restore ${note.title}`} title="Restore note"><ArchiveRestore size={17} /></button><button className="row-action" onClick={() => purge(note.id)} aria-label={`Permanently delete ${note.title}`} title="Permanently delete"><Trash2 size={16} /></button></>}
+          <span className="paper-chip" aria-label={`${note.color} paper`} />
+        </article>)}
+        {!notes.length && !loading && <div className="empty-state"><StickyNote size={28} aria-hidden="true" /><h2>{filter.query || filter.color ? "No notes match your search" : view === "notes" ? "No notes yet" : "Trash is empty"}</h2>{!filter.query && !filter.color && view === "notes" && <button className="text-action" onClick={() => void create()}>Create a note <ArrowRight size={14} /></button>}</div>}
+      </div>
+    </section>
+  </main>;
+}

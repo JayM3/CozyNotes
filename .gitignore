@@ -1,0 +1,61 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+.playwright-cli
+
+# Product plans, research, and investigation evidence stay local
+/[Pp]lan/
+/[Pp]lans/
+/[Rr]esearch/
+/[Ee]vidence/
+
+# Native output and local verification artifacts
+target/
+/output/
+/coverage/
+/test-results/
+/playwright-report/
+*.exe
+*.msi
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.tsbuildinfo
+
+# Local configuration, signing material, and note data
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
