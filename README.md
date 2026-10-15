@@ -8,8 +8,8 @@ CozyNotes is in early development (0.1.0). Windows has received local validation
 
 - A searchable library and independent, frameless note windows.
 - Rich text, bullet lists, checklists, and resetting completed checklist items.
-- Autosave with revision checks and save-before-close coordination.
-- Unicode-aware, case-insensitive library search and find within a note.
+- Serialized autosave with revision checks, a 300 ms debounce, a two-second maximum wait during ordinary typing, and save-before-close coordination.
+- Unicode-aware, case-insensitive library search with highlighted excerpts and paper-color filters, plus find within a note.
 - Six paper colors, note duplication, and Trash with restore and confirmed permanent deletion.
 - Local database migrations with safety snapshots of existing libraries.
 - Single-instance behavior that brings the existing library into focus.
@@ -59,6 +59,15 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml
 
 Frontend tests cover search, editor actions, and save coordination. Rust tests cover storage, migrations, document validation, and search. Rust commands require the native prerequisites above. These checks do not replace interactive tests of window behavior or installer testing.
 
+An optional synthetic benchmark measures SQLite query, mapping, JSON serialization time, and response bytes for 100, 1,000, and 10,000 notes. It excludes native IPC transport and rendering:
+
+```powershell
+$env:COZYNOTES_BENCHMARK_OUTPUT = Join-Path $PWD 'output/everyday-use/backend-benchmark.json'
+cargo test --locked --manifest-path src-tauri/Cargo.toml synthetic_library_benchmark -- --ignored --nocapture
+```
+
+See the [Everyday Use verification record](docs/everyday-use-verification.md) for the measured results and native test limits.
+
 Build a native executable without generating installers:
 
 ```sh
@@ -88,9 +97,17 @@ While a note has focus, use `Ctrl` on Windows/Linux or `Cmd` on macOS:
 | Ctrl/Cmd + + / - | Adjust note reading size |
 | Ctrl/Cmd + 0 | Reset note reading size |
 
+In the library, `Ctrl/Cmd + F` focuses search. Notes and Trash each remember their own search text and paper-color filter until the library window closes. Choose **All colors** to remove the color filter.
+
+In a note, Find highlights literal, case-insensitive matches across formatting within a text block. Use the arrow controls or `Enter` / `Shift + Enter` to move between matches. `Escape` dismisses Find and returns to the editor selection. Highlights do not change the document or its edit time.
+
+Use **More note actions > Reset completed items** to uncheck completed tasks, including nested tasks. One Undo restores their previous states. The action is disabled when every task is unchecked.
+
 ### Local data
 
 The SQLite database lives at `data/cozynotes.sqlite` inside Tauri's per-user app-local-data directory for the application identifier `com.cozynotes.app`. Notes are stored outside the checkout. Existing libraries receive a safety snapshot under the sibling `recovery/` directory before a schema migration.
+
+Migration preserves the original document JSON and edit metadata while backfilling derived search text. An unreadable saved document opens in a read-only recovery view with its available text and a copy action. Opening a note, finding text, or changing a library filter does not create an edit. Failed saves keep the current draft open and offer Retry and Copy draft; editing resumes after a failed close attempt.
 
 For manual desktop testing, debug builds accept `COZYNOTES_TEST_DATA_DIR` pointing to an absolute local directory to isolate test notes. Release builds ignore this variable. Keep databases, logs containing note text, and screenshots containing personal notes out of commits and issue reports.
 
