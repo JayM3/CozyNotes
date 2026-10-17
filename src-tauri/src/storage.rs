@@ -33,6 +33,14 @@ pub struct NoteSummary {
     pub snippet: Vec<SnippetPart>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActiveNoteMetadata {
+    pub id: String,
+    pub title: String,
+}
+
+const MAX_NOTE_ID_LENGTH: usize = 128;
+
 pub fn valid_color(color: &str) -> bool {
     matches!(
         color,
@@ -187,6 +195,137 @@ pub fn list_notes(
         .map_err(|error| error.to_string())?
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|error| error.to_string())
+}
+
+pub fn active_note_metadata(connection: &Connection) -> Result<Vec<ActiveNoteMetadata>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT id, title FROM notes WHERE trashed_at IS NULL ORDER BY updated_at DESC, id",
+        )
+        .map_err(|error| error.to_string())?;
+    statement
+        .query_map([], |row| {
+            Ok(ActiveNoteMetadata {
+                id: row.get(0)?,
+                title: row.get(1)?,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|error| error.to_string())
+}
+
+fn normalized_selection<'a>(ids: &'a [&'a str]) -> Result<Vec<&'a str>, String> {
+    if ids.is_empty() {
+        return Err("Invalid selection".into());
+    }
+    let mut normalized = Vec::with_capacity(ids.len());
+    for id in ids {
+        if id.is_empty() || id.chars().count() > MAX_NOTE_ID_LENGTH {
+            return Err("Invalid selection".into());
+        }
+        if !normalized.iter().any(|known| known == id) {
+            normalized.push(*id);
+        }
+    }
+    if normalized.is_empty() {
+        return Err("Invalid selection".into());
+    }
+    Ok(normalized)
+}
+
+fn revision_for<'a>(revisions: &'a [(&'a str, i64)], id: &str) -> Option<i64> {
+    revisions
+        .iter()
+        .find_map(|(revision_id, revision)| (*revision_id == id).then_some(*revision))
+}
+
+pub fn trash_notes_batch(
+    connection: &mut Connection,
+    ids: &[&str],
+    revisions: &[(&str, i64)],
+    timestamp: i64,
+) -> Result<(), String> {
+    let ids = normalized_selection(ids)?;
+    if revisions
+        .iter()
+        .any(|(id, _)| id.is_empty() || id.chars().count() > MAX_NOTE_ID_LENGTH)
+    {
+        return Err("Invalid selection".into());
+    }
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let mut actual_revisions = Vec::with_capacity(ids.len());
+    for id in &ids {
+        let actual = transaction
+            .query_row(
+                "SELECT revision FROM notes WHERE id=?1 AND trashed_at IS NULL",
+                [*id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "A selected note no longer exists or is no longer active".to_string())?;
+        actual_revisions.push(actual);
+    }
+    if revisions.len() != ids.len() {
+        return Err("Invalid selection".into());
+    }
+    let mut seen_revisions = Vec::with_capacity(revisions.len());
+    for (revision_id, _) in revisions {
+        if seen_revisions.contains(revision_id) {
+            return Err("Invalid selection".into());
+        }
+        seen_revisions.push(*revision_id);
+    }
+    for (id, actual) in ids.iter().zip(actual_revisions) {
+        let Some(expected) = revision_for(revisions, id) else {
+            return Err("Invalid selection".into());
+        };
+        if actual != expected {
+            return Err("A selected note has a stale revision".into());
+        }
+    }
+    for id in &ids {
+        transaction
+            .execute(
+                "UPDATE notes SET trashed_at=?1 WHERE id=?2 AND trashed_at IS NULL",
+                params![timestamp, *id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    transaction.commit().map_err(|error| error.to_string())
+}
+
+pub fn purge_notes_batch(connection: &mut Connection, ids: &[&str]) -> Result<(), String> {
+    let ids = normalized_selection(ids)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    for id in &ids {
+        let trashed = transaction
+            .query_row(
+                "SELECT trashed_at IS NOT NULL FROM notes WHERE id=?1",
+                [*id],
+                |row| row.get::<_, bool>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "A selected note is not in Trash".to_string())?;
+        if !trashed {
+            return Err("A selected note is not in Trash".into());
+        }
+    }
+    for id in &ids {
+        transaction
+            .execute(
+                "DELETE FROM notes WHERE id=?1 AND trashed_at IS NOT NULL",
+                [*id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    transaction.commit().map_err(|error| error.to_string())
 }
 
 pub fn insert_note(

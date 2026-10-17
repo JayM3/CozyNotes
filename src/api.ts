@@ -20,6 +20,7 @@ export type Note = Omit<NoteSummary, "snippet"> & {
   plainText: string;
 };
 export type LibraryFilter = { query: string; color: PaperColor | null };
+export type AppSettings = { runInBackground: boolean; trayAvailable: boolean; warning: string | null };
 
 export const notesApi = {
   list: (trashed: boolean, query: string, color: PaperColor | null) =>
@@ -35,5 +36,10 @@ export const notesApi = {
   restore: (id: string) => invoke<void>("restore_note", { id }),
   purge: (id: string) => invoke<void>("purge_note", { id }),
   emptyTrash: () => invoke<void>("empty_trash"),
+  getSettings: () => invoke<AppSettings>("get_settings", {}),
+  takeAppError: () => invoke<string | null>("take_app_error", {}),
+  setRunInBackground: (enabled: boolean) => invoke<AppSettings>("set_run_in_background", { enabled }),
+  trashMany: (ids: string[]) => invoke<void>("trash_notes", { ids }),
+  purgeMany: (ids: string[]) => invoke<void>("purge_notes", { ids }),
   showLibrary: (focusSearch = false) => invoke<void>("show_library", { focusSearch }),
 };

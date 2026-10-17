@@ -442,6 +442,124 @@ fn trashed_notes_cannot_be_saved_or_accidentally_restored_by_save() {
     assert!(load_note(&connection, "one", false).is_err());
 }
 
+#[test]
+fn batch_trash_deduplicates_and_requires_current_active_revisions_atomically() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    insert_note(&connection, "one", &doc("one"), "cream", 1).unwrap();
+    insert_note(&connection, "two", &doc("two"), "sage", 2).unwrap();
+    insert_note(&connection, "three", &doc("three"), "rose", 3).unwrap();
+
+    trash_notes_batch(
+        &mut connection,
+        &["one", "one", "two"],
+        &[("one", 0), ("two", 0)],
+        10,
+    )
+    .unwrap();
+
+    assert!(load_note(&connection, "one", false).is_err());
+    assert!(load_note(&connection, "two", false).is_err());
+    assert!(load_note(&connection, "three", false).is_ok());
+}
+
+#[test]
+fn batch_trash_rejects_missing_trashed_or_stale_rows_without_partial_mutation() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    insert_note(&connection, "one", &doc("one"), "cream", 1).unwrap();
+    insert_note(&connection, "two", &doc("two"), "sage", 2).unwrap();
+    connection
+        .execute("UPDATE notes SET trashed_at=5 WHERE id='two'", [])
+        .unwrap();
+
+    for (ids, revisions, expected) in [
+        (vec!["one", "missing"], vec![("one", 0)], "no longer exists"),
+        (
+            vec!["one", "two"],
+            vec![("one", 0), ("two", 0)],
+            "no longer active",
+        ),
+        (vec!["one"], vec![("one", 9)], "revision"),
+    ] {
+        let error = trash_notes_batch(&mut connection, &ids, &revisions, 10).unwrap_err();
+        assert!(
+            error.to_lowercase().contains(&expected.to_lowercase()),
+            "{error}"
+        );
+        assert!(load_note(&connection, "one", false).is_ok());
+        assert!(load_note(&connection, "two", true).is_ok());
+    }
+}
+
+#[test]
+fn batch_purge_requires_every_row_to_be_trashed_and_rolls_back_on_invalid_selection() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    insert_note(&connection, "one", &doc("one"), "cream", 1).unwrap();
+    insert_note(&connection, "two", &doc("two"), "sage", 2).unwrap();
+    connection
+        .execute("UPDATE notes SET trashed_at=5 WHERE id='one'", [])
+        .unwrap();
+
+    let error = purge_notes_batch(&mut connection, &["one", "one", "two"]).unwrap_err();
+    assert!(error.contains("not in Trash"));
+    assert!(load_note(&connection, "one", true).is_ok());
+    assert!(load_note(&connection, "two", false).is_ok());
+
+    connection
+        .execute("UPDATE notes SET trashed_at=6 WHERE id='two'", [])
+        .unwrap();
+    purge_notes_batch(&mut connection, &["one", "one", "two"]).unwrap();
+    assert!(load_note(&connection, "one", true).is_err());
+    assert!(load_note(&connection, "two", true).is_err());
+}
+
+#[test]
+fn batch_trash_supports_selections_larger_than_one_hundred_twenty_eight() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    let ids = (0..129)
+        .map(|index| format!("note-{index}"))
+        .collect::<Vec<_>>();
+    for (index, id) in ids.iter().enumerate() {
+        insert_note(&connection, id, &doc(id), "cream", index as i64).unwrap();
+    }
+    let borrowed_ids = ids.iter().map(String::as_str).collect::<Vec<_>>();
+    let revisions = ids.iter().map(|id| (id.as_str(), 0)).collect::<Vec<_>>();
+
+    trash_notes_batch(&mut connection, &borrowed_ids, &revisions, 200).unwrap();
+
+    assert!(
+        ids.iter()
+            .all(|id| load_note(&connection, id, true).is_ok())
+    );
+    assert_eq!(list_notes(&connection, false, "", None).unwrap().len(), 0);
+}
+
+#[test]
+fn batch_trash_rolls_back_when_a_later_update_fails() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    insert_note(&connection, "one", &doc("one"), "cream", 1).unwrap();
+    insert_note(&connection, "two", &doc("two"), "sage", 2).unwrap();
+    connection
+        .execute_batch("CREATE TRIGGER reject_second_trash BEFORE UPDATE OF trashed_at ON notes WHEN OLD.id='two' BEGIN SELECT RAISE(ABORT, 'injected batch failure'); END;")
+        .unwrap();
+
+    let error = trash_notes_batch(
+        &mut connection,
+        &["one", "two"],
+        &[("one", 0), ("two", 0)],
+        10,
+    )
+    .unwrap_err();
+
+    assert!(error.contains("injected batch failure"));
+    assert!(load_note(&connection, "one", false).is_ok());
+    assert!(load_note(&connection, "two", false).is_ok());
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LegacyNote {

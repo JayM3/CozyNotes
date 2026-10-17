@@ -17,12 +17,20 @@ CozyNotes is a quiet desktop notes app with soft paper colors and a cozy place t
 - **A little structure.** Use rich text, bullet lists, and checklists. Reset completed items when a list needs a fresh start.
 - **Find things again.** Search your library, filter by paper color, or find a word inside a note.
 - **Pick your paper.** Choose Cream, Butter, Sage, Rose, Lavender, or Mist.
-- **Set the mood.** Choose Warm, Night, or System. Your preference is remembered and shared across open windows.
+- **Set the mood.** Open Settings to choose Warm, Night, or System. Your preference is remembered and shared across open windows.
+- **Stay within reach.** Use the CozyNotes icon in the system tray to open a note, show the main menu, or exit. Run in background is enabled by default and can be changed in Settings.
+- **Tidy up together.** Select the circles beside notes to move several to Trash. Select all applies to the notes in your current search and paper-color filter.
 - **Keep what matters.** Duplicate a useful note or restore one from Trash before deleting it for good.
 
 ## Settle in
 
 Create a note from the library and start writing. Drag the library by its heading or branding; drag a note using empty space along its toolbar or footer. Closing a note saves it and keeps it in your library.
+
+With Run in background enabled, closing the main window keeps CozyNotes available from its icon beside the Windows clock. Right-click that icon for **Notes**, **Show main menu**, and **Exit CozyNotes**. Exit waits for open drafts to save; if a draft cannot save, it stays open for recovery.
+
+The **Settings** button in the sidebar opens appearance and background preferences in the right pane. Both preferences are remembered. Turn off Run in background to exit normally when the last window closes.
+
+Select a note using its circle without opening it. The selection bar shows the count and provides **Select all**, **Clear selection**, and **Move to Trash**. In Trash, **Delete selected** asks for confirmation before permanently deleting the selection. Changing the search, paper-color filter, or page clears the selection.
 
 Use `Ctrl` on Windows/Linux or `Cmd` on macOS:
 
@@ -87,7 +95,7 @@ $env:CARGO_TARGET_DIR = "$env:TEMP\cozynotes-target"
 npm run tauri dev
 ```
 
-See the [Everyday Use verification record](docs/everyday-use-verification.md) for earlier desktop checks, search measurements, and testing limits. Automated checks do not replace native interaction or installer testing.
+See the [tray, Settings, and selection verification record](docs/2026-10-17-settings-tray-selection-verification.md) for this feature's checks, and the [Everyday Use verification record](docs/everyday-use-verification.md) for earlier desktop checks and search measurements. Automated checks do not replace native interaction or installer testing.
 
 </details>
 

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import type { Editor, JSONContent } from "@tiptap/core";
@@ -17,6 +19,8 @@ import { clearFind, FindExtension, getFindState, hasCompletedTasks, resetComplet
 import { Popover } from "./Popover";
 import { startWindowDrag } from "./windowDrag";
 import { ThemeMenuItems } from "./ThemePicker";
+import { EditorOperationCoordinator } from "./editorOperation";
+import type { EditorOperation, EditorOperationFinish } from "./editorOperation";
 
 const readingSizes = [12, 14, 16, 18, 20, 24];
 
@@ -40,6 +44,7 @@ export function NoteWindow({ id }: { id: string }) {
   const actionInFlight = useRef<Promise<boolean> | null>(null);
   const actionKind = useRef<string | null>(null);
   const closeRef = useRef<() => void>(() => undefined);
+  const nativeOperation = useRef<EditorOperationCoordinator | null>(null);
   const initialFocus = useRef(false);
 
   const editor = useEditor({
@@ -111,19 +116,48 @@ export function NoteWindow({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    let dispose: (() => void) | undefined;
-    void nativeWindow.onCloseRequested(event => {
-      if (allowClose.current) return;
-      event.preventDefault();
-      closeRef.current();
-    }).then(unlisten => {
-      if (cancelled) unlisten();
-      else { dispose = unlisten; setCloseReady(true); }
-    }).catch(() => { if (!cancelled) setError("Couldn't prepare this window for safe editing. Reopen the note to retry."); });
-    return () => { cancelled = true; dispose?.(); };
+    const disposers: Array<() => void> = [];
+    const operation = new EditorOperationCoordinator({
+      isActive: operationId => invoke<boolean>("editor_operation_active", { operationId }),
+      waitForIdle: async () => {
+        if (actionInFlight.current && !await actionInFlight.current) throw new Error("The current note action failed.");
+      },
+      waitForComposition: async () => { await coordinator.current?.waitUntilCompositionEnds(); },
+      setLocked: value => {
+        if (cancelled) return;
+        setLocked(value);
+        if (value && editorRef.current && !editorRef.current.isDestroyed) editorRef.current.setEditable(false, false);
+      },
+      flush: async () => { await coordinator.current?.flush(); },
+      acknowledge: (operationId, success) => invoke<void>("ack_editor_operation", { operationId, success }),
+      onCommitted: () => { if (!cancelled) setError("This note was moved to Trash. Close this window to continue."); },
+      onError: message => { if (!cancelled) setError(message); },
+    });
+    nativeOperation.current = operation;
+    const failed = () => { if (!cancelled) setError("Couldn't prepare this window for safe editing. Reopen the note to retry."); };
+    const registrations = [
+      nativeWindow.onCloseRequested(event => {
+        if (allowClose.current || operation.canClose) return;
+        event.preventDefault();
+        closeRef.current();
+      }),
+      listen<EditorOperation>("prepare-editor-operation", event => { void operation.prepare(event.payload).catch(failed); }),
+      listen<EditorOperationFinish>("finish-editor-operation", event => { void operation.finish(event.payload).catch(failed); }),
+    ];
+    void Promise.all(registrations.map(registration => registration.then(dispose => {
+      if (cancelled) dispose();
+      else disposers.push(dispose);
+    }))).then(() => { if (!cancelled) setCloseReady(true); }).catch(failed);
+    return () => {
+      cancelled = true;
+      operation.dispose();
+      if (nativeOperation.current === operation) nativeOperation.current = null;
+      disposers.forEach(dispose => dispose());
+    };
   }, [nativeWindow]);
 
   const savedAction = useCallback(function runSavedAction(action: () => Promise<unknown>, failure: string, kind: string): Promise<boolean> {
+    if (nativeOperation.current?.busy) return Promise.resolve(false);
     if (actionInFlight.current) {
       return actionKind.current === kind ? actionInFlight.current
         : actionInFlight.current.then(success => success ? runSavedAction(action, failure, kind) : false);
@@ -151,19 +185,31 @@ export function NoteWindow({ id }: { id: string }) {
     return actionInFlight.current;
   }, []);
 
-  const close = useCallback(() => savedAction(async () => { allowClose.current = true; await nativeWindow.close(); }, "Your draft is still open. Save before closing this note.", "close"), [nativeWindow, savedAction]);
+  const close = useCallback(async () => {
+    if (nativeOperation.current?.canClose) {
+      try { await nativeWindow.close(); return true; }
+      catch { setError("This note is in Trash, but the window couldn't close. Retry Close note."); return false; }
+    }
+    return savedAction(async () => { allowClose.current = true; await nativeWindow.close(); }, "Your draft is still open. Save before closing this note.", "close");
+  }, [nativeWindow, savedAction]);
   closeRef.current = () => { void close(); };
   const trash = () => savedAction(async () => { await notesApi.trash(id); allowClose.current = true; await nativeWindow.close(); }, "Couldn't save or move this note to Trash.", "trash");
   const duplicate = () => savedAction(() => notesApi.duplicate(id), "Couldn't save or duplicate this note.", "duplicate");
   const retry = async () => {
     if (loadError) { setLoadAttempt(value => value + 1); return; }
-    try { await coordinator.current?.flush(); }
+    if (nativeOperation.current && !await nativeOperation.current.retryFinish()) return;
+    try { await coordinator.current?.flush(); setError(""); }
     catch { setError("Couldn't save. Your draft is still open."); }
   };
   const copyDraft = async () => {
     try { await navigator.clipboard.writeText(loadError ? note?.plainText ?? "" : editor?.getText() ?? ""); }
     catch { setError("Couldn't copy the text. Your draft is still open."); }
   };
+  const windowAction = useCallback(async (action: () => Promise<unknown>, failure: string) => {
+    if (nativeOperation.current?.busy) return;
+    try { await action(); }
+    catch { setError(failure); }
+  }, []);
   const command = (run: (current: Editor) => void) => { if (editor?.isEditable) { run(editor); editor.commands.focus(); } };
   const changeColor = async (color: PaperColor) => {
     try { await notesApi.color(id, color); setNote(current => current ? { ...current, color } : current); }
@@ -194,11 +240,11 @@ export function NoteWindow({ id }: { id: string }) {
       const primary = (event.metaKey || event.ctrlKey) && !event.altKey;
       if (primary && event.key.toLowerCase() === "f") {
         event.preventDefault();
-        if (event.shiftKey) void notesApi.showLibrary(true).catch(() => setError("Couldn't open library search."));
+        if (event.shiftKey) void windowAction(() => notesApi.showLibrary(true), "Couldn't open library search.");
         else openFind();
       }
       if (primary && event.key.toLowerCase() === "w") { event.preventDefault(); void close(); }
-      if (primary && event.key.toLowerCase() === "n") { event.preventDefault(); void notesApi.create().catch(() => setError("Couldn't create a note.")); }
+      if (primary && event.key.toLowerCase() === "n") { event.preventDefault(); void windowAction(notesApi.create, "Couldn't create a note."); }
       if (primary && ["+", "=", "-", "0"].includes(event.key)) {
         event.preventDefault();
         if (event.key === "0") setFontSize(16);
@@ -208,7 +254,7 @@ export function NoteWindow({ id }: { id: string }) {
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [close, openFind, dismissFind, findOpen]);
+  }, [close, openFind, dismissFind, findOpen, windowAction]);
 
   const activeIndex = state?.find.activeIndex ?? -1;
   const matchCount = state?.find.matches.length ?? 0;
@@ -235,8 +281,8 @@ export function NoteWindow({ id }: { id: string }) {
           <button role="menuitem" disabled={!ready || locked} onClick={openFind}><Search size={15} /> Find in note</button>
           <button role="menuitem" data-editor-action disabled={!ready || locked || !state?.completed} onClick={() => command(resetCompletedTasks)}><RotateCcw size={15} /> Reset completed items</button>
           <button role="menuitem" disabled={!ready || locked} onClick={() => void duplicate()}><Copy size={15} /> Duplicate</button>
-          <button role="menuitem" onClick={() => void notesApi.create().catch(() => setError("Couldn't create a note."))}><Plus size={15} /> New note</button>
-          <button role="menuitem" onClick={() => void notesApi.showLibrary().catch(() => setError("Couldn't show the library."))}><List size={15} /> Show library</button>
+          <button role="menuitem" disabled={locked} onClick={() => void windowAction(notesApi.create, "Couldn't create a note.")}><Plus size={15} /> New note</button>
+          <button role="menuitem" disabled={locked} onClick={() => void windowAction(() => notesApi.showLibrary(), "Couldn't show the library.")}><List size={15} /> Show library</button>
           <div className="menu-section-label" role="presentation">Appearance</div>
           <ThemeMenuItems />
           <div className="compact-formats" role="group" aria-label="Text formatting">

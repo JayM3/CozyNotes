@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { notesApi } from "./api";
 import type { NoteSummary, PaperColor, View } from "./api";
 
-const changeEvents = ["note-created", "note-changed", "note-trashed", "note-restored", "note-purged", "trash-emptied"];
+const changeEvents = ["note-created", "note-changed", "note-trashed", "note-restored", "note-purged", "trash-emptied", "notes-batch-changed"];
 
 export function useLibrarySearch(view: View, query: string, color: PaperColor | null) {
   const [result, setResult] = useState<{ key: string; notes: NoteSummary[] }>({ key: "", notes: [] });

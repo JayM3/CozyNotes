@@ -38,7 +38,7 @@ describe("library search requests", () => {
     await act(async () => { newest.resolve([summary("new")]); });
     await act(async () => { old.resolve([summary("old")]); });
     expect(result.current.notes[0].title).toBe("new");
-    expect(vi.mocked(listen)).toHaveBeenCalledTimes(6);
+    expect(vi.mocked(listen)).toHaveBeenCalledTimes(7);
   });
 
   it("invalidates an old view immediately and passes the color filter", async () => {

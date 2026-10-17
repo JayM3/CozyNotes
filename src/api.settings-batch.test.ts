@@ -1,0 +1,31 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+import { notesApi } from "./api";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+describe("settings and batch IPC", () => {
+  beforeEach(() => vi.mocked(invoke).mockReset());
+
+  it("uses the reviewed settings command names and payloads", async () => {
+    const settings = { runInBackground: true, trayAvailable: true, warning: null };
+    vi.mocked(invoke).mockResolvedValue(settings);
+    await expect(notesApi.getSettings()).resolves.toEqual(settings);
+    expect(invoke).toHaveBeenNthCalledWith(1, "get_settings", {});
+    await expect(notesApi.setRunInBackground(false)).resolves.toEqual(settings);
+    expect(invoke).toHaveBeenNthCalledWith(2, "set_run_in_background", { enabled: false });
+  });
+
+  it("sends explicit selections through the atomic batch commands", async () => {
+    await notesApi.trashMany(["one", "two"]);
+    expect(invoke).toHaveBeenNthCalledWith(1, "trash_notes", { ids: ["one", "two"] });
+    await notesApi.purgeMany(["two"]);
+    expect(invoke).toHaveBeenNthCalledWith(2, "purge_notes", { ids: ["two"] });
+  });
+
+  it("consumes a native error with the library-only queued-error command", async () => {
+    vi.mocked(invoke).mockResolvedValue("Your drafts remain open.");
+    await expect(notesApi.takeAppError()).resolves.toBe("Your drafts remain open.");
+    expect(invoke).toHaveBeenCalledWith("take_app_error", {});
+  });
+});
