@@ -45,9 +45,20 @@ Use `Ctrl` on Windows/Linux or `Cmd` on macOS:
 
 ## Growing gently
 
-CozyNotes is in early development, currently **0.1.0**. Windows has received local desktop testing; macOS and Linux still need native interaction testing. The project includes automated CI checks for all three platforms.
+CozyNotes is in early development, currently **0.1.1**. Download the app from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
 
-Image attachments, remembered window arrangements, user-facing backup and restore, and exports are still on the wish list. Signed installers and automatic release publishing are not configured yet. For now, build the app from source using the steps below.
+| Platform | Download |
+| --- | --- |
+| Windows x64 | `Cozynote.exe` to run directly, or the `windows_x64_setup.exe` installer |
+| macOS Apple Silicon | `macos_aarch64.dmg` |
+| macOS Intel | `macos_x64.dmg` |
+| Linux x64 | `linux_x64.AppImage` or `linux_x64.deb` |
+
+The Windows executable requires WebView2 Runtime, which the installer can install when needed. Linux packages are built on Ubuntu 22.04 and require WebKitGTK 4.1; the Debian package declares its runtime dependencies. For AppImage, make the file executable before opening it.
+
+Windows and macOS downloads are not signed with publisher certificates, and macOS builds are not notarized. Windows has received local desktop testing; macOS and Linux still need native interaction testing. Release builds and automated checks run on GitHub Actions for all three platforms. Each release includes `SHA256SUMS.txt` for checking downloaded files.
+
+Image attachments, remembered window arrangements, user-facing backup and restore, and exports are still on the wish list. You can also build the app from source using the steps below.
 
 ## Run it locally
 
@@ -85,6 +96,8 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
 Build a desktop executable with `npm run tauri build -- --no-bundle`, or create platform-specific installers with `npm run tauri build`.
+
+To publish a release, synchronize the versions in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`; add `docs/releases/v<VERSION>.md`; then push the matching `v<VERSION>` tag after CI passes. The release workflow tests and builds Windows x64, both macOS architectures, and Linux x64, then publishes the complete set of downloads.
 
 Build output goes to `src-tauri/target/` (or `CARGO_TARGET_DIR` when set). Executables are under `release/`; installers are under `release/bundle/`. Keep copies of packaged builds and other release files in the local **`releases/`** folder at the repository root. That folder and everything inside it are ignored by Git.
 

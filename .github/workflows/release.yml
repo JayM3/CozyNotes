@@ -1,0 +1,254 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Check tag, manifests, and release notes
+        id: version
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+          const read = (path) => readFileSync(path, 'utf8');
+          const pkg = JSON.parse(read('package.json'));
+          const lock = JSON.parse(read('package-lock.json'));
+          const tauri = JSON.parse(read('src-tauri/tauri.conf.json'));
+          const cargo = read('src-tauri/Cargo.toml').match(/^version = "([^"]+)"/m)?.[1];
+          const cargoLock = read('src-tauri/Cargo.lock').match(/name = "cozynotes"\r?\nversion = "([^"]+)"/)?.[1];
+          const versions = [pkg.version, lock.version, lock.packages[''].version, tauri.version, cargo, cargoLock];
+          if (!/^\d+\.\d+\.\d+$/.test(pkg.version) || versions.some((v) => v !== pkg.version)) {
+            throw new Error('Release versions must match across all manifests and lockfiles');
+          }
+          if (process.env.GITHUB_REF !== `refs/tags/v${pkg.version}`) {
+            throw new Error('Run the release workflow from the matching version tag');
+          }
+          if (!existsSync(`docs/releases/v${pkg.version}.md`)) throw new Error('Release notes are missing');
+          appendFileSync(process.env.GITHUB_OUTPUT, `version=${pkg.version}\n`);
+          console.log(`Validated v${pkg.version}`);
+          NODE
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            platform: windows
+            arch: x64
+          - name: macOS Apple Silicon
+            os: macos-latest
+            target: aarch64-apple-darwin
+            bundles: dmg
+            platform: macos
+            arch: aarch64
+          - name: macOS Intel
+            os: macos-latest
+            target: x86_64-apple-darwin
+            bundles: dmg
+            platform: macos
+            arch: x64
+          - name: Linux x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+            platform: linux
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTUP_TOOLCHAIN: stable
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RELEASE_TARGET: ${{ matrix.target }}
+      RELEASE_PLATFORM: ${{ matrix.platform }}
+      RELEASE_ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Set up stable Rust
+        run: rustup toolchain install stable --profile minimal --component rustfmt --target ${{ matrix.target }}
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: release-${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Test frontend
+        run: npm test
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Test backend
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Build native packages
+        env:
+          APPLE_SIGNING_IDENTITY: '-'
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
+
+      - name: Collect native packages
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
+          import { join } from 'node:path';
+          const { RELEASE_VERSION: version, RELEASE_TARGET: target, RELEASE_PLATFORM: platform, RELEASE_ARCH: arch } = process.env;
+          const formats = platform === 'windows' ? [['nsis', '.exe', '_setup.exe']]
+            : platform === 'macos' ? [['dmg', '.dmg', '.dmg']]
+            : [['appimage', '.AppImage', '.AppImage'], ['deb', '.deb', '.deb']];
+          mkdirSync('release-assets', { recursive: true });
+          for (const [bundle, extension, suffix] of formats) {
+            const dir = join('src-tauri', 'target', target, 'release', 'bundle', bundle);
+            const files = readdirSync(dir).filter((name) => name.endsWith(extension));
+            if (files.length !== 1) throw new Error(`Expected one ${extension} package, found ${files.length}`);
+            const name = `CozyNotes_${version}_${platform}_${arch}${suffix}`;
+            copyFileSync(join(dir, files[0]), join('release-assets', name));
+            console.log(name);
+          }
+          NODE
+
+      - name: Build Windows standalone executable
+        if: runner.os == 'Windows'
+        run: npm run tauri build -- --target x86_64-pc-windows-msvc --no-bundle -- --locked
+
+      - name: Collect Windows standalone executable
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cp src-tauri/target/x86_64-pc-windows-msvc/release/cozynotes.exe release-assets/Cozynote.exe
+
+      - name: Retain release downloads
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.target }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish complete release
+    needs: [validate, build]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RELEASE_TAG: v${{ needs.validate.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check out release notes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Download native packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: release-artifacts
+
+      - name: Verify complete asset set and generate checksums
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+          const v = process.env.RELEASE_VERSION;
+          const artifacts = {
+            'release-x86_64-pc-windows-msvc': ['Cozynote.exe', `CozyNotes_${v}_windows_x64_setup.exe`],
+            'release-aarch64-apple-darwin': [`CozyNotes_${v}_macos_aarch64.dmg`],
+            'release-x86_64-apple-darwin': [`CozyNotes_${v}_macos_x64.dmg`],
+            'release-x86_64-unknown-linux-gnu': [`CozyNotes_${v}_linux_x64.AppImage`, `CozyNotes_${v}_linux_x64.deb`],
+          };
+          const actualArtifacts = readdirSync('release-artifacts').sort();
+          if (JSON.stringify(actualArtifacts) !== JSON.stringify(Object.keys(artifacts).sort())) {
+            throw new Error(`Unexpected release artifacts: ${actualArtifacts}`);
+          }
+          const packages = new Map();
+          for (const [artifact, expected] of Object.entries(artifacts)) {
+            const dir = `release-artifacts/${artifact}`;
+            if (!lstatSync(dir).isDirectory()) throw new Error(`Invalid artifact directory: ${artifact}`);
+            const actual = readdirSync(dir).sort();
+            if (JSON.stringify(actual) !== JSON.stringify([...expected].sort())) {
+              throw new Error(`Unexpected files in ${artifact}: ${actual}`);
+            }
+            for (const name of expected) {
+              const path = `${dir}/${name}`;
+              const stat = lstatSync(path);
+              if (!stat.isFile() || stat.size === 0) throw new Error(`Invalid package: ${path}`);
+              if (packages.has(name)) throw new Error(`Duplicate package: ${name}`);
+              packages.set(name, path);
+            }
+          }
+          mkdirSync('release-assets');
+          const checksums = [...packages.keys()].sort().map((name) => {
+            const path = packages.get(name);
+            copyFileSync(path, `release-assets/${name}`);
+            return `${createHash('sha256').update(readFileSync(path)).digest('hex')}  ${name}`;
+          });
+          writeFileSync('release-assets/SHA256SUMS.txt', checksums.join('\n') + '\n');
+          console.log(checksums.join('\n'));
+          NODE
+
+      - name: Create release with all downloads
+        run: gh release create "$RELEASE_TAG" --verify-tag --draft --title "CozyNotes $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md" release-assets/*
+
+      - name: Publish release
+        run: gh release edit "$RELEASE_TAG" --draft=false --latest
