@@ -15,6 +15,8 @@ import { SaveCoordinator } from "./saveCoordinator";
 import type { SaveStatus } from "./saveCoordinator";
 import { clearFind, FindExtension, getFindState, hasCompletedTasks, resetCompletedTasks, setFindQuery, stepFind } from "./editorTools";
 import { Popover } from "./Popover";
+import { startWindowDrag } from "./windowDrag";
+import { ThemeMenuItems } from "./ThemePicker";
 
 const readingSizes = [12, 14, 16, 18, 20, 24];
 
@@ -217,7 +219,7 @@ export function NoteWindow({ id }: { id: string }) {
   const ready = Boolean(note) && !loadError && closeReady;
   const statusText = saveStatus === "loading" ? "Loading..." : saveStatus === "saving" ? "Saving..." : saveStatus === "error" ? "Couldn't save" : "Saved on this device";
   return <main className={`note-window paper-${note?.color ?? "cream"}`}>
-    <header className="note-toolbar" data-tauri-drag-region>
+    <header className="note-toolbar" data-tauri-drag-region onMouseDown={startWindowDrag}>
       <div className="toolbar-group" role="group" aria-label="Text formatting" data-tauri-drag-region>
         <button className={`tool ${state?.bold ? "active" : ""}`} disabled={!ready || locked} aria-label="Bold" title="Bold" aria-pressed={state?.bold ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleBold().run())}><Bold size={16} /></button>
         <button className={`tool secondary-format ${state?.italic ? "active" : ""}`} disabled={!ready || locked} aria-label="Italic" title="Italic" aria-pressed={state?.italic ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleItalic().run())}><Italic size={16} /></button>
@@ -235,6 +237,8 @@ export function NoteWindow({ id }: { id: string }) {
           <button role="menuitem" disabled={!ready || locked} onClick={() => void duplicate()}><Copy size={15} /> Duplicate</button>
           <button role="menuitem" onClick={() => void notesApi.create().catch(() => setError("Couldn't create a note."))}><Plus size={15} /> New note</button>
           <button role="menuitem" onClick={() => void notesApi.showLibrary().catch(() => setError("Couldn't show the library."))}><List size={15} /> Show library</button>
+          <div className="menu-section-label" role="presentation">Appearance</div>
+          <ThemeMenuItems />
           <div className="compact-formats" role="group" aria-label="Text formatting">
             <button role="menuitem" data-editor-action disabled={!ready || locked} onClick={() => command(current => current.chain().toggleItalic().run())}><Italic size={15} /> Italic</button>
             <button role="menuitem" data-editor-action disabled={!ready || locked} onClick={() => command(current => current.chain().toggleUnderline().run())}><UnderlineIcon size={15} /> Underline</button>
@@ -244,7 +248,7 @@ export function NoteWindow({ id }: { id: string }) {
           <button role="menuitem" disabled={!ready || locked} className="danger-action" onClick={() => void trash()}><Trash2 size={15} /> Move to Trash</button>
           <button role="menuitem" onClick={() => void close()}><X size={15} /> Close note</button>
         </Popover>
-        <button className="tool trash-tool" disabled={!ready || locked} onClick={() => void trash()} aria-label="Move to Trash" title="Move to Trash"><Trash2 size={16} /></button>
+        <button className="tool close-tool" onClick={() => void close()} aria-label="Close note" title="Close note"><X size={17} /></button>
       </div>
     </header>
     {findOpen && <div className="find-bar" role="search" aria-label="Find in note">
@@ -258,6 +262,6 @@ export function NoteWindow({ id }: { id: string }) {
       {error && <div className="save-error" role="alert">{error}<div className="error-actions"><button onClick={() => void retry()}>Retry</button><button onClick={() => void copyDraft()}>{loadError ? "Copy available text" : "Copy draft"}</button></div></div>}
       {loadError && note?.plainText ? <pre className="recovery-text">{note.plainText}</pre> : <EditorContent editor={editor} />}
     </section>
-    <footer className="note-footer" data-tauri-drag-region><span className={`save-indicator status-${saveStatus}`} data-tauri-drag-region /><span className="save-label" data-tauri-drag-region>{statusText}</span><div className="reading-controls"><button aria-label="Decrease text size" title="Decrease text size" disabled={fontSize === 12} onClick={() => changeReadingSize(-1)}><AArrowDown size={16} /></button><button aria-label="Increase text size" title="Increase text size" disabled={fontSize === 24} onClick={() => changeReadingSize(1)}><AArrowUp size={16} /></button></div></footer>
+    <footer className="note-footer" data-tauri-drag-region onMouseDown={startWindowDrag}><span className={`save-indicator status-${saveStatus}`} data-tauri-drag-region /><span className="save-label" data-tauri-drag-region>{statusText}</span><div className="reading-controls"><button aria-label="Decrease text size" title="Decrease text size" disabled={fontSize === 12} onClick={() => changeReadingSize(-1)}><AArrowDown size={16} /></button><button aria-label="Increase text size" title="Increase text size" disabled={fontSize === 24} onClick={() => changeReadingSize(1)}><AArrowUp size={16} /></button></div></footer>
   </main>;
 }

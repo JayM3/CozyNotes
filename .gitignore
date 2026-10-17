@@ -21,6 +21,7 @@ dist-ssr
 
 # Native output and local verification artifacts
 target/
+/releases/
 /output/
 /coverage/
 /test-results/

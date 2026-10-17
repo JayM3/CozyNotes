@@ -6,8 +6,8 @@ The [MIT License](LICENSE) covers the CozyNotes project code. Third-party depend
 
 | Font | Package | License copy |
 | --- | --- | --- |
-| Fraunces | `@fontsource/fraunces` | [SIL Open Font License 1.1](licenses/Fraunces-OFL.txt) |
 | Source Sans 3 | `@fontsource/source-sans-3` | [SIL Open Font License 1.1](licenses/Source-Sans-3-OFL.txt) |
+| Nunito | `@fontsource/nunito` | [SIL Open Font License 1.1](licenses/Nunito-OFL.txt) |
 
 These fonts are bundled for local use by the interface. Preserve the license copies when redistributing them.
 

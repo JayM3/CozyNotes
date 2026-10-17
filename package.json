@@ -16,7 +16,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@fontsource/fraunces": "^5.3.0",
+    "@fontsource/nunito": "^5.3.0",
     "@fontsource/source-sans-3": "^5.3.1",
     "@tauri-apps/api": "^2",
     "@tiptap/extension-task-item": "^3.32.0",

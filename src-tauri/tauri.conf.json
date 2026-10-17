@@ -15,8 +15,8 @@
         "label": "library",
         "title": "CozyNotes",
         "decorations": false,
-        "width": 920,
-        "height": 680,
+        "width": 615,
+        "height": 500,
         "minWidth": 480,
         "minHeight": 500
       }

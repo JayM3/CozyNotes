@@ -5,12 +5,24 @@ import { ArchiveRestore, ArrowRight, Check, Plus, Search, StickyNote, Trash2, X 
 import { notesApi, paperColors } from "./api";
 import type { LibraryFilter, View } from "./api";
 import { useLibrarySearch } from "./useLibrarySearch";
+import { startWindowDrag } from "./windowDrag";
+import { ThemePicker } from "./ThemePicker";
+import cozyLogo from "./assets/cozynotes-logo.png";
+
+type Confirmation = {
+  title: string;
+  message: string;
+  actionLabel: string;
+  action: () => Promise<unknown>;
+};
 
 export function Library() {
   const [view, setView] = useState<View>("notes");
   const [filters, setFilters] = useState<Record<View, LibraryFilter>>({ notes: { query: "", color: null }, trash: { query: "", color: null } });
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  const cancelConfirmation = useRef<HTMLButtonElement>(null);
   const filter = filters[view];
   const { notes, error, loading, refresh } = useLibrarySearch(view, filter.query, filter.color);
   const search = useRef<HTMLInputElement>(null);
@@ -44,23 +56,50 @@ export function Library() {
     catch { setActionError(message); }
   };
   const purge = (id: string) => {
-    if (window.confirm("Permanently delete this note? This cannot be undone.")) void actOnNote(() => notesApi.purge(id), "Couldn't permanently delete this note.");
+    setConfirmation({
+      title: "Delete note?",
+      message: "Permanently delete this note? This cannot be undone.",
+      actionLabel: "Delete note",
+      action: () => actOnNote(() => notesApi.purge(id), "Couldn't permanently delete this note."),
+    });
   };
   const emptyTrash = () => {
-    if (window.confirm("Permanently delete every note in Trash? This cannot be undone.")) void actOnNote(notesApi.emptyTrash, "Couldn't empty Trash.");
+    setConfirmation({
+      title: "Empty Trash?",
+      message: "Permanently delete every note in Trash? This cannot be undone.",
+      actionLabel: "Empty Trash",
+      action: () => actOnNote(notesApi.emptyTrash, "Couldn't empty Trash."),
+    });
+  };
+  useEffect(() => {
+    if (!confirmation) return;
+    cancelConfirmation.current?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setConfirmation(null); }
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [confirmation]);
+  const confirmAction = async () => {
+    if (!confirmation) return;
+    const current = confirmation;
+    setConfirmation(null);
+    setBusy(true);
+    try { await current.action(); }
+    finally { setBusy(false); }
   };
   return <main className="library-shell">
-    <aside className="rail" data-tauri-drag-region>
-      <div className="brand" data-tauri-drag-region><span className="brand-mark" aria-hidden="true" data-tauri-drag-region>c</span><span data-tauri-drag-region>CozyNotes</span></div>
+    <aside className="rail" data-tauri-drag-region onMouseDown={startWindowDrag}>
+      <div className="brand" data-tauri-drag-region><img className="brand-logo" src={cozyLogo} alt="CozyNotes" draggable={false} data-tauri-drag-region /><img className="brand-compact" src="/cozynotes-icon.png" alt="CozyNotes" draggable={false} data-tauri-drag-region /></div>
       <button className="new-note" onClick={() => void create()} disabled={busy} aria-label="New note" title="New note"><Plus size={17} /> New note</button>
       <nav aria-label="Library">
         <button className={view === "notes" ? "nav-item active" : "nav-item"} aria-current={view === "notes" ? "page" : undefined} aria-label="Notes" title="Notes" onClick={() => setView("notes")}><StickyNote size={16} /> Notes</button>
         <button className={view === "trash" ? "nav-item active" : "nav-item"} aria-current={view === "trash" ? "page" : undefined} aria-label="Trash" title="Trash" onClick={() => setView("trash")}><Trash2 size={16} /> Trash</button>
       </nav>
-      <div className="rail-foot"><span className="local-indicator" /> Stored on this device</div>
+      <div className="rail-bottom"><ThemePicker /><div className="rail-foot" title="Stored on this device"><span className="local-indicator" /> Stored on this device</div></div>
     </aside>
     <section className="library-content">
-      <header className="library-header" data-tauri-drag-region>
+      <header className="library-header" data-tauri-drag-region onMouseDown={startWindowDrag}>
         <div data-tauri-drag-region><h1 data-tauri-drag-region>{view === "notes" ? "Notes" : "Trash"}</h1></div>
         <div className="header-actions">{view === "trash" && <button className="text-action empty-trash" onClick={emptyTrash}>Empty Trash</button>}<button className="icon-button" aria-label="Close library" title="Close library" onClick={() => { void getCurrentWindow().close().catch(() => setActionError("Couldn't close the library.")); }}><X size={17} /></button></div>
       </header>
@@ -80,8 +119,21 @@ export function Library() {
           {view === "trash" && <><button className="row-action" onClick={() => void actOnNote(() => notesApi.restore(note.id), "Couldn't restore this note.")} aria-label={`Restore ${note.title}`} title="Restore note"><ArchiveRestore size={17} /></button><button className="row-action" onClick={() => purge(note.id)} aria-label={`Permanently delete ${note.title}`} title="Permanently delete"><Trash2 size={16} /></button></>}
           <span className="paper-chip" aria-label={`${note.color} paper`} />
         </article>)}
-        {!notes.length && !loading && <div className="empty-state"><StickyNote size={28} aria-hidden="true" /><h2>{filter.query || filter.color ? "No notes match your search" : view === "notes" ? "No notes yet" : "Trash is empty"}</h2>{!filter.query && !filter.color && view === "notes" && <button className="text-action" onClick={() => void create()}>Create a note <ArrowRight size={14} /></button>}</div>}
+        {!notes.length && !loading && <div className="empty-state">{!filter.query && !filter.color && view === "notes" ? <img className="empty-notebook" src="/cozynotes-icon.png" alt="" draggable={false} /> : <StickyNote size={28} aria-hidden="true" />}<h2>{filter.query || filter.color ? "No notes match your search" : view === "notes" ? "No notes yet" : "Trash is empty"}</h2>{!filter.query && !filter.color && view === "notes" && <button className="text-action" onClick={() => void create()}>Create a note <ArrowRight size={14} /></button>}</div>}
       </div>
     </section>
+    {confirmation && <div className="dialog-backdrop" role="presentation">
+      <section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-message">
+        <div className="confirm-dialog-icon" aria-hidden="true"><Trash2 size={18} /></div>
+        <div className="confirm-dialog-copy">
+          <h2 id="confirm-dialog-title">{confirmation.title}</h2>
+          <p id="confirm-dialog-message">{confirmation.message}</p>
+        </div>
+        <div className="confirm-dialog-actions">
+          <button ref={cancelConfirmation} className="dialog-button secondary" onClick={() => setConfirmation(null)}>Cancel</button>
+          <button className="dialog-button danger" onClick={() => void confirmAction()} disabled={busy}>{confirmation.actionLabel}</button>
+        </div>
+      </section>
+    </div>}
   </main>;
 }

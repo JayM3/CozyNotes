@@ -1,26 +1,51 @@
-# CozyNotes
+<p align="center">
+  <img src="src/assets/cozynotes-logo.png" alt="CozyNotes — a little cat with a notebook" width="320" />
+</p>
 
-An offline-first desktop notes app built with Tauri 2, React, TypeScript, and Rust. Write in independent note windows, organize notes in a library, and keep your notes on your device in SQLite. Fonts are bundled locally.
+<h1 align="center">CozyNotes</h1>
 
-CozyNotes is in early development (0.1.0). Windows has received local validation; macOS and Linux still need native interaction testing. The CI workflow checks the build and automated tests on all three platforms when run on GitHub.
+<p align="center">
+  <strong>A little home for your notes.</strong><br />
+  Small reminders, everyday lists, and thoughts worth keeping.
+</p>
 
-## Features
+CozyNotes is a quiet desktop notes app with soft paper colors and a cozy place to write. Keep a note beside your work, find an old idea in your library, or tick off a little list. Your notes stay on your device, and the app works offline without an account. Fonts are bundled locally, too.
 
-- A searchable library and independent, frameless note windows.
-- Rich text, bullet lists, checklists, and resetting completed checklist items.
-- Serialized autosave with revision checks, a 300 ms debounce, a two-second maximum wait during ordinary typing, and save-before-close coordination.
-- Unicode-aware, case-insensitive library search with highlighted excerpts and paper-color filters, plus find within a note.
-- Six paper colors, note duplication, and Trash with restore and confirmed permanent deletion.
-- Local database migrations with safety snapshots of existing libraries.
-- Single-instance behavior that brings the existing library into focus.
+## Make yourself at home
 
-Images, preferences, a night theme, persistent window geometry, user-facing backup/restore, and exports are not implemented yet. Signed releases and installer distribution are not configured.
+- **Room to think.** Open notes in their own windows and let autosave take care of your writing.
+- **A little structure.** Use rich text, bullet lists, and checklists. Reset completed items when a list needs a fresh start.
+- **Find things again.** Search your library, filter by paper color, or find a word inside a note.
+- **Pick your paper.** Choose Cream, Butter, Sage, Rose, Lavender, or Mist.
+- **Set the mood.** Choose Warm, Night, or System. Your preference is remembered and shared across open windows.
+- **Keep what matters.** Duplicate a useful note or restore one from Trash before deleting it for good.
 
-## Development setup
+## Settle in
 
-Use Node.js **24.15.0 or a newer 24.x release** (the tested version is in `.nvmrc`), npm, and stable Rust with Cargo. Install the native prerequisites for your platform:
+Create a note from the library and start writing. Drag the library by its heading or branding; drag a note using empty space along its toolbar or footer. Closing a note saves it and keeps it in your library.
 
-- **Windows:** Microsoft C++ Build Tools with the Desktop development with C++ workload, the Windows SDK, and WebView2 Runtime. Use the MSVC Rust toolchain.
+Use `Ctrl` on Windows/Linux or `Cmd` on macOS:
+
+| Shortcut | A little help |
+| --- | --- |
+| Ctrl/Cmd + N | New note |
+| Ctrl/Cmd + W | Close the current note |
+| Ctrl/Cmd + F | Find in a note, or search from the library |
+| Ctrl/Cmd + Shift + F | Open library search from a note |
+| Ctrl/Cmd + + / - | Adjust note reading size |
+| Ctrl/Cmd + 0 | Reset note reading size |
+
+## Growing gently
+
+CozyNotes is in early development, currently **0.1.0**. Windows has received local desktop testing; macOS and Linux still need native interaction testing. The project includes automated CI checks for all three platforms.
+
+Image attachments, remembered window arrangements, user-facing backup and restore, and exports are still on the wish list. Signed installers and automatic release publishing are not configured yet. For now, build the app from source using the steps below.
+
+## Run it locally
+
+Built with Tauri 2, React, TypeScript, and Rust. Use Node.js **24.15.0 or a newer 24.x release**, npm, stable Rust, and the native prerequisites for your platform:
+
+- **Windows:** Microsoft C++ Build Tools with the Desktop development with C++ workload, the Windows SDK, WebView2 Runtime, and the MSVC Rust toolchain.
 - **macOS:** Xcode Command Line Tools.
 - **Linux:** WebKitGTK 4.1 and the native build dependencies. On Debian/Ubuntu:
 
@@ -37,18 +62,12 @@ npm ci
 npm run tauri dev
 ```
 
-No API keys, accounts, environment files, or external services are required. `npm run dev` starts the frontend alone; note storage and window commands require the Tauri desktop runtime.
+`npm run dev` opens the frontend alone. Saving notes and managing desktop windows require the Tauri runtime.
 
-### Network shares on Windows
+<details>
+<summary>Builds, checks, and Windows network shares</summary>
 
-A local checkout is recommended. For an SMB/UNC checkout, map the repository to a drive and run commands from that drive. Vite can fail to resolve modules through a raw UNC path. Keep Rust output on a local disk to avoid linker errors:
-
-```powershell
-$env:CARGO_TARGET_DIR = "$env:TEMP\cozynotes-target"
-npm run tauri dev
-```
-
-## Build and test
+Run the automated checks:
 
 ```sh
 npm test
@@ -57,76 +76,29 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
-Frontend tests cover search, editor actions, and save coordination. Rust tests cover storage, migrations, document validation, and search. Rust commands require the native prerequisites above. These checks do not replace interactive tests of window behavior or installer testing.
+Build a desktop executable with `npm run tauri build -- --no-bundle`, or create platform-specific installers with `npm run tauri build`.
 
-An optional synthetic benchmark measures SQLite query, mapping, JSON serialization time, and response bytes for 100, 1,000, and 10,000 notes. It excludes native IPC transport and rendering:
+Build output goes to `src-tauri/target/` (or `CARGO_TARGET_DIR` when set). Executables are under `release/`; installers are under `release/bundle/`. Keep copies of packaged builds and other release files in the local **`releases/`** folder at the repository root. That folder and everything inside it are ignored by Git.
+
+On Windows, a local checkout is easiest. For an SMB/UNC checkout, map the repository to a drive and run commands there. Keep Rust build output on a local disk:
 
 ```powershell
-$env:COZYNOTES_BENCHMARK_OUTPUT = Join-Path $PWD 'output/everyday-use/backend-benchmark.json'
-cargo test --locked --manifest-path src-tauri/Cargo.toml synthetic_library_benchmark -- --ignored --nocapture
+$env:CARGO_TARGET_DIR = "$env:TEMP\cozynotes-target"
+npm run tauri dev
 ```
 
-See the [Everyday Use verification record](docs/everyday-use-verification.md) for the measured results and native test limits.
+See the [Everyday Use verification record](docs/everyday-use-verification.md) for earlier desktop checks, search measurements, and testing limits. Automated checks do not replace native interaction or installer testing.
 
-Build a native executable without generating installers:
+</details>
 
-```sh
-npm run tauri build -- --no-bundle
-```
+## Your notes live here
 
-Build platform-specific installers locally:
+Notes are stored in `data/cozynotes.sqlite` inside Tauri's per-user app-local-data directory for `com.cozynotes.app`, separate from the project folder. Existing libraries receive a safety snapshot in a sibling `recovery/` directory before a database migration. These snapshots are separate from the planned user-facing backup feature.
 
-```sh
-npm run tauri build
-```
+For isolated desktop testing, debug builds accept an absolute local `COZYNOTES_TEST_DATA_DIR`; release builds ignore it. Keep personal notes, databases, and private screenshots out of commits and issue reports.
 
-Cargo output goes to `src-tauri/target/`, or to `CARGO_TARGET_DIR` when set. Release executables are under `release/`; installer bundles are under `release/bundle/`. Build output is ignored by Git. Distribute binaries through GitHub Releases rather than adding them to the source tree.
+## Lend a hand
 
-## Using CozyNotes
+Bug reports, small improvements, and thoughtful ideas are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). The [design notes](design.md) describe the colors, typography, and quiet interactions that make CozyNotes feel like home.
 
-Move a note using empty space along its top toolbar or footer. Move the library using its heading or branding. Close a note with **More note actions > Close note** or the operating system's close action. Closing a note saves it and keeps it in the library.
-
-While a note has focus, use `Ctrl` on Windows/Linux or `Cmd` on macOS:
-
-| Shortcut | Action |
-| --- | --- |
-| Ctrl/Cmd + N | New note |
-| Ctrl/Cmd + W | Close note |
-| Ctrl/Cmd + F | Find in note |
-| Ctrl/Cmd + Shift + F | Open library search |
-| Ctrl/Cmd + + / - | Adjust note reading size |
-| Ctrl/Cmd + 0 | Reset note reading size |
-
-In the library, `Ctrl/Cmd + F` focuses search. Notes and Trash each remember their own search text and paper-color filter until the library window closes. Choose **All colors** to remove the color filter.
-
-In a note, Find highlights literal, case-insensitive matches across formatting within a text block. Use the arrow controls or `Enter` / `Shift + Enter` to move between matches. `Escape` dismisses Find and returns to the editor selection. Highlights do not change the document or its edit time.
-
-Use **More note actions > Reset completed items** to uncheck completed tasks, including nested tasks. One Undo restores their previous states. The action is disabled when every task is unchecked.
-
-### Local data
-
-The SQLite database lives at `data/cozynotes.sqlite` inside Tauri's per-user app-local-data directory for the application identifier `com.cozynotes.app`. Notes are stored outside the checkout. Existing libraries receive a safety snapshot under the sibling `recovery/` directory before a schema migration.
-
-Migration preserves the original document JSON and edit metadata while backfilling derived search text. An unreadable saved document opens in a read-only recovery view with its available text and a copy action. Opening a note, finding text, or changing a library filter does not create an edit. Failed saves keep the current draft open and offer Retry and Copy draft; editing resumes after a failed close attempt.
-
-For manual desktop testing, debug builds accept `COZYNOTES_TEST_DATA_DIR` pointing to an absolute local directory to isolate test notes. Release builds ignore this variable. Keep databases, logs containing note text, and screenshots containing personal notes out of commits and issue reports.
-
-## Project layout
-
-| Path | Contents |
-| --- | --- |
-| `src/` | React interface, editor, search, save coordination, and frontend tests |
-| `src-tauri/src/` | Rust commands, SQLite storage, document processing, and backend tests |
-| `src-tauri/capabilities/` | Tauri window permissions |
-| `src-tauri/icons/` | Native application icons |
-| `scripts/` | Frontend test runner |
-| `licenses/` | Bundled font licenses |
-| `.github/` | CI, dependency updates, and contribution templates |
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and validation checklist. Use the issue templates for bugs and feature requests.
-
-## License
-
-CozyNotes is licensed under the [MIT License](LICENSE). Bundled fonts and dependencies retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Made available under the [MIT License](LICENSE). Bundled fonts and dependencies keep their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
