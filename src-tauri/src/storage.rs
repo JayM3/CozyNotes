@@ -4,7 +4,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{fs, path::Path};
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +13,7 @@ pub struct Note {
     pub document: Option<Value>,
     pub plain_text: String,
     pub title: String,
+    pub explicit_title: String,
     pub preview: String,
     pub color: String,
     pub revision: i64,
@@ -66,12 +67,12 @@ pub fn open_database(path: &Path) -> Result<Connection, String> {
     }
     connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;").map_err(|error| error.to_string())?;
     if version < SCHEMA_VERSION {
-        migrate(&mut connection, path)?;
+        migrate(&mut connection, path, version)?;
     }
     Ok(connection)
 }
 
-fn migrate(connection: &mut Connection, path: &Path) -> Result<(), String> {
+fn migrate(connection: &mut Connection, path: &Path, version: i64) -> Result<(), String> {
     let existing: bool = connection
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='notes')",
@@ -117,7 +118,7 @@ fn migrate(connection: &mut Connection, path: &Path) -> Result<(), String> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| error.to_string())?;
-    if existing {
+    if existing && version < 1 {
         transaction.execute_batch("ALTER TABLE notes ADD COLUMN search_text TEXT NOT NULL DEFAULT ''; ALTER TABLE notes ADD COLUMN title TEXT NOT NULL DEFAULT 'Untitled note'; ALTER TABLE notes ADD COLUMN preview TEXT NOT NULL DEFAULT ''; ALTER TABLE notes ADD COLUMN document_error TEXT;").map_err(|error| error.to_string())?;
         let rows = {
             let mut statement = transaction
@@ -143,25 +144,31 @@ fn migrate(connection: &mut Connection, path: &Path) -> Result<(), String> {
             let (title, preview) = document::summary(&text);
             transaction.execute("UPDATE notes SET plain_text=?1, search_text=?2, title=?3, preview=?4, document_error=?5 WHERE id=?6", params![text, document::search_key(&text), title, preview, error, id]).map_err(|error| error.to_string())?;
         }
-    } else {
+    } else if !existing {
         transaction.execute_batch("CREATE TABLE notes (id TEXT PRIMARY KEY, document_json TEXT NOT NULL, plain_text TEXT NOT NULL DEFAULT '', color TEXT NOT NULL DEFAULT 'cream', revision INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, trashed_at INTEGER, search_text TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT 'Untitled note', preview TEXT NOT NULL DEFAULT '', document_error TEXT);").map_err(|error| error.to_string())?;
     }
+    // Existing titles are derived metadata. Keep them and every body unchanged;
+    // a new, empty field records only titles explicitly entered by the user.
     transaction
-        .execute_batch(
-            "CREATE INDEX notes_recent ON notes(updated_at DESC, id); PRAGMA user_version=1;",
-        )
+        .execute_batch("ALTER TABLE notes ADD COLUMN explicit_title TEXT NOT NULL DEFAULT '';")
+        .map_err(|error| error.to_string())?;
+    transaction
+        .execute_batch("CREATE INDEX IF NOT EXISTS notes_recent ON notes(updated_at DESC, id);")
+        .map_err(|error| error.to_string())?;
+    transaction
+        .pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(|error| error.to_string())?;
     transaction.commit().map_err(|error| error.to_string())
 }
 
 pub fn load_note(connection: &Connection, id: &str, include_trashed: bool) -> Result<Note, String> {
-    connection.query_row("SELECT id, document_json, plain_text, title, preview, color, revision, updated_at FROM notes WHERE id=?1 AND (?2 OR trashed_at IS NULL)", params![id, include_trashed], |row| {
+    connection.query_row("SELECT id, document_json, plain_text, title, preview, color, revision, updated_at, explicit_title FROM notes WHERE id=?1 AND (?2 OR trashed_at IS NULL)", params![id, include_trashed], |row| {
         let raw: String = row.get(1)?;
         let (document, document_error) = match parsed_document(&raw) {
             Ok(document) => (Some(document), None),
             Err(error) => (None, Some(error)),
         };
-        Ok(Note { id: row.get(0)?, document, plain_text: row.get(2)?, title: row.get(3)?, preview: row.get(4)?, color: row.get(5)?, revision: row.get(6)?, updated_at: row.get(7)?, document_error })
+        Ok(Note { id: row.get(0)?, document, plain_text: row.get(2)?, title: row.get(3)?, preview: row.get(4)?, color: row.get(5)?, revision: row.get(6)?, updated_at: row.get(7)?, explicit_title: row.get(8)?, document_error })
     }).optional().map_err(|error| error.to_string())?.ok_or_else(|| "Note not found".into())
 }
 
@@ -175,13 +182,20 @@ pub fn list_notes(
         return Err("Invalid paper color".into());
     }
     let needle = document::search_key(query.trim());
-    let mut statement = connection.prepare("SELECT id, title, preview, color, revision, updated_at, CASE WHEN ?2='' THEN '' ELSE plain_text END FROM notes WHERE (trashed_at IS NOT NULL)=?1 AND (?2='' OR instr(search_text, ?2)>0) AND (?3 IS NULL OR color=?3) ORDER BY updated_at DESC, id").map_err(|error| error.to_string())?;
+    let mut statement = connection.prepare("SELECT id, title, preview, color, revision, updated_at, CASE WHEN ?2='' THEN '' ELSE plain_text END, CASE WHEN ?2='' THEN '' ELSE explicit_title END FROM notes WHERE (trashed_at IS NOT NULL)=?1 AND (?2='' OR instr(search_text, ?2)>0) AND (?3 IS NULL OR color=?3) ORDER BY updated_at DESC, id").map_err(|error| error.to_string())?;
     statement
         .query_map(params![trashed, needle, color], |row| {
             let preview: String = row.get(2)?;
             let text: String = row.get(6)?;
-            let snippet =
-                document::snippet(if needle.is_empty() { &preview } else { &text }, &needle);
+            let explicit_title: String = row.get(7)?;
+            let snippet_text = if needle.is_empty() {
+                &preview
+            } else if document::search_key(&text).contains(&needle) {
+                &text
+            } else {
+                &explicit_title
+            };
+            let snippet = document::snippet(snippet_text, &needle);
             Ok(NoteSummary {
                 id: row.get(0)?,
                 title: row.get(1)?,
@@ -334,14 +348,16 @@ pub fn insert_note(
     document: &Value,
     color: &str,
     timestamp: i64,
+    explicit_title: &str,
 ) -> Result<Note, String> {
     document::validate(document)?;
+    validate_title(explicit_title)?;
     if !valid_color(color) {
         return Err("Invalid paper color".into());
     }
     let text = document::plain_text(document);
-    let (title, preview) = document::summary(&text);
-    connection.execute("INSERT INTO notes (id, document_json, plain_text, color, revision, created_at, updated_at, search_text, title, preview) VALUES (?1,?2,?3,?4,0,?5,?5,?6,?7,?8)", params![id, document.to_string(), text, color, timestamp, document::search_key(&text), title, preview]).map_err(|error| error.to_string())?;
+    let (title, preview, search_text) = note_metadata(explicit_title, &text);
+    connection.execute("INSERT INTO notes (id, document_json, plain_text, color, revision, created_at, updated_at, search_text, title, preview, explicit_title) VALUES (?1,?2,?3,?4,0,?5,?5,?6,?7,?8,?9)", params![id, document.to_string(), text, color, timestamp, search_text, title, preview, explicit_title]).map_err(|error| error.to_string())?;
     load_note(connection, id, false)
 }
 
@@ -351,10 +367,10 @@ pub fn save_document(
     expected_revision: i64,
     document: &Value,
     timestamp: i64,
+    explicit_title: Option<&str>,
 ) -> Result<Note, String> {
     document::validate(document)?;
     let text = document::plain_text(document);
-    let (title, preview) = document::summary(&text);
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| error.to_string())?;
@@ -362,13 +378,39 @@ pub fn save_document(
     if original.document_error.is_some() {
         return Err("This saved note needs recovery and cannot be overwritten.".into());
     }
-    let updated = transaction.execute("UPDATE notes SET document_json=?1, plain_text=?2, search_text=?3, title=?4, preview=?5, document_error=NULL, updated_at=?6, revision=revision+1 WHERE id=?7 AND revision=?8 AND trashed_at IS NULL", params![document.to_string(), text, document::search_key(&text), title, preview, timestamp, id, expected_revision]).map_err(|error| error.to_string())?;
+    // Omitting the additive IPC field preserves a title saved by a newer caller.
+    let explicit_title = explicit_title.unwrap_or(&original.explicit_title);
+    validate_title(explicit_title)?;
+    let (title, preview, search_text) = note_metadata(explicit_title, &text);
+    let updated = transaction.execute("UPDATE notes SET document_json=?1, plain_text=?2, search_text=?3, title=?4, preview=?5, document_error=NULL, updated_at=?6, revision=revision+1, explicit_title=?9 WHERE id=?7 AND revision=?8 AND trashed_at IS NULL", params![document.to_string(), text, search_text, title, preview, timestamp, id, expected_revision, explicit_title]).map_err(|error| error.to_string())?;
     if updated == 0 {
         return Err("Stale revision or note is in Trash".into());
     }
     let note = load_note(&transaction, id, false)?;
     transaction.commit().map_err(|error| error.to_string())?;
     Ok(note)
+}
+
+fn validate_title(title: &str) -> Result<(), String> {
+    if title.contains(['\r', '\n', '\u{2028}', '\u{2029}']) {
+        return Err("A note title must be a single line.".into());
+    }
+    Ok(())
+}
+
+fn note_metadata(explicit_title: &str, text: &str) -> (String, String, String) {
+    let (fallback, preview) = document::summary(text);
+    let title = if explicit_title.trim().is_empty() {
+        fallback
+    } else {
+        document::truncate(explicit_title.trim(), 160)
+    };
+    let search_text = if explicit_title.is_empty() {
+        document::search_key(text)
+    } else {
+        document::search_key(&format!("{explicit_title}\n{text}"))
+    };
+    (title, preview, search_text)
 }
 
 #[cfg(test)]

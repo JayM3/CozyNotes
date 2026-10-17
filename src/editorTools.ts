@@ -5,18 +5,18 @@ import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { findTextMatches, type TextMatch } from "./textSearch";
 
-export type FindMatch = TextMatch;
+export type FindMatch = TextMatch & { inTitle?: true };
 export type FindState = { query: string; matches: FindMatch[]; activeIndex: number };
 
-type FindAction = { type: "query"; query: string } | { type: "step"; direction: 1 | -1 };
-type FindPluginState = { result: FindState; decorations: DecorationSet };
+type FindAction = { type: "query"; query: string } | { type: "step"; direction: 1 | -1 } | { type: "title"; title: string };
+type FindPluginState = { result: FindState; decorations: DecorationSet; title: string };
 
 const emptyFindState: FindState = { query: "", matches: [], activeIndex: -1 };
 const findPluginKey = new PluginKey<FindPluginState>("cozyNoteFind");
 
-function documentMatches(doc: ProseMirrorNode, query: string): FindMatch[] {
+function documentMatches(doc: ProseMirrorNode, query: string, title: string): FindMatch[] {
   if (!query) return [];
-  const matches: FindMatch[] = [];
+  const matches: FindMatch[] = findTextMatches(title, query).map(match => ({ ...match, inTitle: true }));
 
   doc.descendants((node, position) => {
     if (!node.isTextblock) return;
@@ -45,16 +45,16 @@ function documentMatches(doc: ProseMirrorNode, query: string): FindMatch[] {
 }
 
 function decorate(doc: ProseMirrorNode, result: FindState): DecorationSet {
-  return DecorationSet.create(doc, result.matches.map((match, index) => Decoration.inline(match.from, match.to, {
+  return DecorationSet.create(doc, result.matches.flatMap((match, index) => match.inTitle ? [] : [Decoration.inline(match.from, match.to, {
     class: index === result.activeIndex ? "find-match find-match-active" : "find-match",
     "data-find-active": String(index === result.activeIndex),
-  })));
+  })]));
 }
 
-function nextFindState(transaction: Transaction, previous: FindState, action?: FindAction): FindState {
+function nextFindState(transaction: Transaction, previous: FindState, title: string, action?: FindAction): FindState {
   const query = action?.type === "query" ? action.query : previous.query;
-  const recompute = transaction.docChanged || query !== previous.query;
-  const matches = recompute ? documentMatches(transaction.doc, query) : previous.matches;
+  const recompute = transaction.docChanged || query !== previous.query || action?.type === "title";
+  const matches = recompute ? documentMatches(transaction.doc, query, title) : previous.matches;
   let activeIndex = previous.activeIndex;
 
   if (!matches.length) {
@@ -63,8 +63,8 @@ function nextFindState(transaction: Transaction, previous: FindState, action?: F
     activeIndex = 0;
   } else if (recompute) {
     const previousMatch = previous.matches[previous.activeIndex];
-    const mappedPosition = transaction.mapping.map(previousMatch.from, 1);
-    activeIndex = matches.findIndex(match => match.from >= mappedPosition);
+    const mappedPosition = previousMatch.inTitle ? previousMatch.from : transaction.mapping.map(previousMatch.from, 1);
+    activeIndex = matches.findIndex(match => Boolean(match.inTitle) === Boolean(previousMatch.inTitle) && match.from >= mappedPosition);
     if (activeIndex === -1) activeIndex = 0;
   }
 
@@ -82,12 +82,13 @@ export const FindExtension = Extension.create({
     return [new Plugin<FindPluginState>({
       key: findPluginKey,
       state: {
-        init: () => ({ result: emptyFindState, decorations: DecorationSet.empty }),
+        init: () => ({ result: emptyFindState, decorations: DecorationSet.empty, title: "" }),
         apply(transaction, previous) {
           const action = transaction.getMeta(findPluginKey) as FindAction | undefined;
           if (!transaction.docChanged && !action) return previous;
-          const result = nextFindState(transaction, previous.result, action);
-          return { result, decorations: decorate(transaction.doc, result) };
+          const title = action?.type === "title" ? action.title : previous.title;
+          const result = nextFindState(transaction, previous.result, title, action);
+          return { result, decorations: decorate(transaction.doc, result), title };
         },
       },
       props: {
@@ -106,6 +107,12 @@ export function setFindQuery(editor: Editor, query: string): FindState {
     editor.view.dispatch(editor.state.tr.setMeta(findPluginKey, { type: "query", query } satisfies FindAction).setMeta("addToHistory", false));
   }
   return getFindState(editor);
+}
+
+export function setFindTitle(editor: Editor, title: string): void {
+  if (title !== findPluginKey.getState(editor.state)?.title) {
+    editor.view.dispatch(editor.state.tr.setMeta(findPluginKey, { type: "title", title } satisfies FindAction).setMeta("addToHistory", false));
+  }
 }
 
 export function stepFind(editor: Editor, direction: 1 | -1): FindMatch | null {

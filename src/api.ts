@@ -15,10 +15,12 @@ export type NoteSummary = {
   snippet: SnippetSegment[];
 };
 export type Note = Omit<NoteSummary, "snippet"> & {
+  explicitTitle: string;
   document: JSONContent | null;
   documentError?: string | null;
   plainText: string;
 };
+export type NoteDraft = { document: JSONContent; explicitTitle: string };
 export type LibraryFilter = { query: string; color: PaperColor | null };
 export type AppSettings = { runInBackground: boolean; trayAvailable: boolean; warning: string | null };
 
@@ -28,8 +30,8 @@ export const notesApi = {
   get: (id: string) => invoke<Note>("get_note", { id }),
   create: () => invoke<Note>("create_note"),
   open: (id: string) => invoke<void>("open_note", { id }),
-  save: (id: string, expectedRevision: number, document: JSONContent) =>
-    invoke<Note>("save_note", { id, expectedRevision, document }),
+  save: (id: string, expectedRevision: number, draft: NoteDraft) =>
+    invoke<Note>("save_note", { id, expectedRevision, ...draft }),
   color: (id: string, color: PaperColor) => invoke<void>("set_note_color", { id, color }),
   duplicate: (id: string) => invoke<Note>("duplicate_note", { id }),
   trash: (id: string) => invoke<void>("trash_note", { id }),

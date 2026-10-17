@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
-import type { Editor, JSONContent } from "@tiptap/core";
+import type { Editor } from "@tiptap/core";
 import type { SelectionBookmark } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -12,10 +12,11 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { AArrowDown, AArrowUp, ArrowDown, ArrowUp, Bold, Check, CheckSquare, Copy, Italic, List, MoreHorizontal, Plus, RotateCcw, Search, Trash2, Underline as UnderlineIcon, X } from "lucide-react";
 import { notesApi, paperColors } from "./api";
-import type { Note, PaperColor } from "./api";
+import type { Note, NoteDraft, PaperColor } from "./api";
 import { SaveCoordinator } from "./saveCoordinator";
 import type { SaveStatus } from "./saveCoordinator";
-import { clearFind, FindExtension, getFindState, hasCompletedTasks, resetCompletedTasks, setFindQuery, stepFind } from "./editorTools";
+import { clearFind, FindExtension, getFindState, hasCompletedTasks, resetCompletedTasks, setFindQuery, setFindTitle, stepFind } from "./editorTools";
+import { NoteTitle } from "./NoteTitle";
 import { Popover } from "./Popover";
 import { startWindowDrag } from "./windowDrag";
 import { ThemeMenuItems } from "./ThemePicker";
@@ -27,6 +28,10 @@ const readingSizes = [12, 14, 16, 18, 20, 24];
 export function NoteWindow({ id }: { id: string }) {
   const nativeWindow = useMemo(() => getCurrentWindow(), []);
   const [note, setNote] = useState<Note | null>(null);
+  const [title, setTitle] = useState("");
+  const titleValue = useRef("");
+  const titleInput = useRef<HTMLInputElement>(null);
+  const titleSelection = useRef<{ from: number; to: number } | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus | "loading">("loading");
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState(false);
@@ -38,7 +43,7 @@ export function NoteWindow({ id }: { id: string }) {
   const [findQuery, setQuery] = useState("");
   const findInput = useRef<HTMLInputElement>(null);
   const bookmark = useRef<SelectionBookmark | null>(null);
-  const coordinator = useRef<SaveCoordinator<JSONContent, Note> | null>(null);
+  const coordinator = useRef<SaveCoordinator<NoteDraft, Note> | null>(null);
   const editorRef = useRef<Editor | null>(null);
   const allowClose = useRef(false);
   const actionInFlight = useRef<Promise<boolean> | null>(null);
@@ -59,7 +64,7 @@ export function NoteWindow({ id }: { id: string }) {
         compositionend: () => { window.setTimeout(() => coordinator.current?.setComposing(false), 0); return false; },
       },
     },
-    onUpdate: ({ editor: updated }) => coordinator.current?.markDirty(updated.getJSON()),
+    onUpdate: ({ editor: updated }) => coordinator.current?.markDirty({ document: updated.getJSON(), explicitTitle: titleValue.current }),
     onBlur: () => { void coordinator.current?.flush().catch(() => undefined); },
     onTransaction: ({ transaction }) => { if (bookmark.current && transaction.docChanged) bookmark.current = bookmark.current.map(transaction.mapping); },
   });
@@ -88,12 +93,15 @@ export function NoteWindow({ id }: { id: string }) {
     void notesApi.get(id).then(value => {
       if (cancelled || editor.isDestroyed) return;
       setNote(value);
+      titleValue.current = value.explicitTitle;
+      setTitle(value.explicitTitle);
       if (!value.document || value.documentError) throw new Error(value.documentError || "The saved document is unreadable.");
       editor.schema.nodeFromJSON(value.document).check();
       editor.commands.setContent(value.document, { emitUpdate: false, errorOnInvalidContent: true });
+      setFindTitle(editor, value.explicitTitle);
       coordinator.current = new SaveCoordinator({
         revision: value.revision,
-        save: (document, revision) => notesApi.save(id, revision, document),
+        save: (draft, revision) => notesApi.save(id, revision, draft),
         onSaved: saved => setNote(current => current ? { ...saved, color: current.color } : saved),
         onStatus: status => {
           setSaveStatus(status);
@@ -111,7 +119,12 @@ export function NoteWindow({ id }: { id: string }) {
     if (!editor || editor.isDestroyed) return;
     const editable = Boolean(coordinator.current) && closeReady && !locked && !loadError;
     editor.setEditable(editable, false);
-    if (editable && !initialFocus.current) { initialFocus.current = true; editor.commands.focus("end"); }
+    if (titleInput.current) titleInput.current.readOnly = !editable;
+    if (editable && !initialFocus.current) {
+      initialFocus.current = true;
+      if (!titleValue.current && editor.isEmpty) titleInput.current?.focus();
+      else editor.commands.focus("end");
+    }
   }, [editor, note, closeReady, locked, loadError]);
 
   useEffect(() => {
@@ -126,6 +139,7 @@ export function NoteWindow({ id }: { id: string }) {
       setLocked: value => {
         if (cancelled) return;
         setLocked(value);
+        if (titleInput.current) titleInput.current.readOnly = value || !coordinator.current;
         if (value && editorRef.current && !editorRef.current.isDestroyed) editorRef.current.setEditable(false, false);
       },
       flush: async () => { await coordinator.current?.flush(); },
@@ -167,6 +181,7 @@ export function NoteWindow({ id }: { id: string }) {
       try {
         await coordinator.current?.waitUntilCompositionEnds();
         if (editorRef.current && !editorRef.current.isDestroyed) editorRef.current.setEditable(false, false);
+        if (titleInput.current) titleInput.current.readOnly = true;
         setLocked(true);
         await coordinator.current?.flush();
         await action();
@@ -179,6 +194,7 @@ export function NoteWindow({ id }: { id: string }) {
         actionInFlight.current = null;
         actionKind.current = null;
         setLocked(false);
+        if (titleInput.current) titleInput.current.readOnly = !coordinator.current;
         if (coordinator.current && editorRef.current && !editorRef.current.isDestroyed) editorRef.current.setEditable(true, false);
       }
     })();
@@ -202,7 +218,8 @@ export function NoteWindow({ id }: { id: string }) {
     catch { setError("Couldn't save. Your draft is still open."); }
   };
   const copyDraft = async () => {
-    try { await navigator.clipboard.writeText(loadError ? note?.plainText ?? "" : editor?.getText() ?? ""); }
+    const body = loadError ? note?.plainText ?? "" : editor?.getText() ?? "";
+    try { await navigator.clipboard.writeText(titleValue.current ? `${titleValue.current}\n\n${body}` : body); }
     catch { setError("Couldn't copy the text. Your draft is still open."); }
   };
   const windowAction = useCallback(async (action: () => Promise<unknown>, failure: string) => {
@@ -217,7 +234,11 @@ export function NoteWindow({ id }: { id: string }) {
   };
   const openFind = useCallback(() => {
     if (!editor || !coordinator.current) return;
-    if (!bookmark.current) bookmark.current = editor.state.selection.getBookmark();
+    if (!bookmark.current) {
+      bookmark.current = editor.state.selection.getBookmark();
+      titleSelection.current = document.activeElement === titleInput.current
+        ? { from: titleInput.current?.selectionStart ?? 0, to: titleInput.current?.selectionEnd ?? 0 } : null;
+    }
     setFindOpen(true);
     setFindQuery(editor, findQuery);
     window.requestAnimationFrame(() => { findInput.current?.focus(); findInput.current?.select(); });
@@ -230,8 +251,19 @@ export function NoteWindow({ id }: { id: string }) {
       editor.view.dispatch(editor.state.tr.setSelection(bookmark.current.resolve(editor.state.doc)).setMeta("addToHistory", false));
       bookmark.current = null;
     }
-    editor.commands.focus();
+    if (titleSelection.current) {
+      titleInput.current?.focus();
+      titleInput.current?.setSelectionRange(titleSelection.current.from, titleSelection.current.to);
+      titleSelection.current = null;
+    } else editor.commands.focus();
   }, [editor]);
+  const changeTitle = (value: string) => {
+    if (!editor?.isEditable || !coordinator.current || titleInput.current?.readOnly) return;
+    titleValue.current = value;
+    setTitle(value);
+    setFindTitle(editor, value);
+    coordinator.current.markDirty({ document: editor.getJSON(), explicitTitle: value });
+  };
   const changeReadingSize = (direction: number) => setFontSize(value => readingSizes[Math.max(0, Math.min(readingSizes.length - 1, readingSizes.indexOf(value) + direction))]);
 
   useEffect(() => {
@@ -264,7 +296,7 @@ export function NoteWindow({ id }: { id: string }) {
 
   const ready = Boolean(note) && !loadError && closeReady;
   const statusText = saveStatus === "loading" ? "Loading..." : saveStatus === "saving" ? "Saving..." : saveStatus === "error" ? "Couldn't save" : "Saved on this device";
-  return <main className={`note-window paper-${note?.color ?? "cream"}`}>
+  return <main className={`note-window paper-${note?.color ?? "cream"}`} style={{ "--reading-size": `${fontSize}px` } as CSSProperties}>
     <header className="note-toolbar" data-tauri-drag-region onMouseDown={startWindowDrag}>
       <div className="toolbar-group" role="group" aria-label="Text formatting" data-tauri-drag-region>
         <button className={`tool ${state?.bold ? "active" : ""}`} disabled={!ready || locked} aria-label="Bold" title="Bold" aria-pressed={state?.bold ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleBold().run())}><Bold size={16} /></button>
@@ -304,7 +336,8 @@ export function NoteWindow({ id }: { id: string }) {
       <button className="tool" aria-label="Next match" title="Next match" disabled={!matchCount} onClick={() => editor && stepFind(editor, 1)}><ArrowDown size={16} /></button>
       <button className="tool" aria-label="Close find" title="Close find" onClick={dismissFind}><X size={16} /></button>
     </div>}
-    <section className="note-body" style={{ "--reading-size": `${fontSize}px` } as CSSProperties}>
+    <NoteTitle inputRef={titleInput} value={title} readOnly={!ready || locked} find={state?.find} onChange={changeTitle} onEnter={() => { if (editor?.isEditable) editor.commands.focus("start"); }} onBlur={() => { void coordinator.current?.flush().catch(() => undefined); }} onComposition={composing => coordinator.current?.setComposing(composing)} />
+    <section className="note-body">
       {error && <div className="save-error" role="alert">{error}<div className="error-actions"><button onClick={() => void retry()}>Retry</button><button onClick={() => void copyDraft()}>{loadError ? "Copy available text" : "Copy draft"}</button></div></div>}
       {loadError && note?.plainText ? <pre className="recovery-text">{note.plainText}</pre> : <EditorContent editor={editor} />}
     </section>
