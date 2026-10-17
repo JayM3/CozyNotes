@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cozynotes:desktop-commands:v1",
+  "title": "CozyNotes additive local desktop IPC contract v1",
+  "description": "Tauri invoke commands and window-scoped events. Failures reject invoke with a string. These are local IPC operations, not HTTP endpoints. Existing commands retain their contracts. Reviewed contract is referenced by the implementation plan.",
+  "$defs": {
+    "empty": { "type": "object", "additionalProperties": false },
+    "ids": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 128 } },
+    "selection": { "type": "object", "required": ["ids"], "additionalProperties": false, "properties": { "ids": { "$ref": "#/$defs/ids" } } },
+    "settings": { "type": "object", "required": ["runInBackground", "trayAvailable", "warning"], "additionalProperties": false, "properties": { "runInBackground": { "type": "boolean" }, "trayAvailable": { "type": "boolean" }, "warning": { "type": ["string", "null"] } } },
+    "operationId": { "type": "string", "format": "uuid" },
+    "operation": { "type": "object", "required": ["operationId", "kind"], "additionalProperties": false, "properties": { "operationId": { "$ref": "#/$defs/operationId" }, "kind": { "enum": ["trash", "exit"] } } },
+    "finish": { "type": "object", "required": ["operationId", "outcome"], "additionalProperties": false, "properties": { "operationId": { "$ref": "#/$defs/operationId" }, "outcome": { "enum": ["cancelled", "committed"] } } },
+    "batchChange": { "type": "object", "required": ["ids", "action"], "additionalProperties": false, "properties": { "ids": { "$ref": "#/$defs/ids" }, "action": { "enum": ["trashed", "purged"] } } }
+  },
+  "x-commands": {
+    "get_settings": { "request": { "$ref": "#/$defs/empty" }, "response": { "$ref": "#/$defs/settings" }, "callers": ["library"] },
+    "set_run_in_background": { "request": { "type": "object", "required": ["enabled"], "additionalProperties": false, "properties": { "enabled": { "type": "boolean" } } }, "response": { "$ref": "#/$defs/settings" }, "callers": ["library"], "errors": ["Settings could not be persisted; the previous effective preference remains active", "Another desktop operation is in progress"] },
+    "trash_notes": { "request": { "$ref": "#/$defs/selection" }, "response": { "type": "null" }, "callers": ["library"], "behavior": "Deduplicate explicit IDs; reject empty/invalid/missing/already trashed IDs. Prepare affected open editors, require all successful acknowledgments, take fresh revision snapshots while prepared editors stay locked, and soft-delete the complete selection in one immediate SQLite transaction. No partial mutation. Emit one batch event and close affected editors after commit.", "errors": ["Invalid selection", "A selected note no longer exists or is no longer active", "Another operation is in progress", "An editor failed to save or did not respond", "Database write failed"] },
+    "purge_notes": { "request": { "$ref": "#/$defs/selection" }, "response": { "type": "null" }, "callers": ["library"], "behavior": "Validate the entire explicit selection is currently trashed and delete it atomically. The UI must confirm permanent deletion first.", "errors": ["Invalid selection", "A selected note is not in Trash", "Another operation is in progress", "Database write failed"] },
+    "editor_operation_active": { "request": { "type": "object", "required": ["operationId"], "additionalProperties": false, "properties": { "operationId": { "$ref": "#/$defs/operationId" } } }, "response": { "type": "boolean" }, "callers": ["note-*"], "behavior": "True only if this native-issued operation is still active and expects the invoking editor window; derive identity from native Window, never a client-supplied note ID." },
+    "ack_editor_operation": { "request": { "type": "object", "required": ["operationId", "success"], "additionalProperties": false, "properties": { "operationId": { "$ref": "#/$defs/operationId" }, "success": { "type": "boolean" } } }, "response": { "type": "null" }, "callers": ["note-*"], "behavior": "Correlate the native operation ID and invoking editor with the pending request. Reject stale, duplicate or unexpected replies. Only successful acknowledgments from every expected editor permit a commit." }
+  },
+  "x-events": {
+    "prepare-editor-operation": { "payload": { "$ref": "#/$defs/operation" }, "direction": "native to affected note window", "behavior": "Verify the operation with editor_operation_active; wait for existing local actions and IME composition; lock editing; flush autosave; acknowledge success while staying locked. Failure acknowledges false and preserves the draft." },
+    "finish-editor-operation": { "payload": { "$ref": "#/$defs/finish" }, "direction": "native to affected note window", "behavior": "Only release the matching preparation after editor_operation_active confirms it is no longer active. Cancellation restores editing, including cancellation while awaiting IME or save. Committed editors are destroyed by native code after data is safe." },
+    "notes-batch-changed": { "payload": { "$ref": "#/$defs/batchChange" }, "direction": "native to application", "behavior": "Refresh current library results once after commit." },
+    "library-show-notes": { "payload": { "type": "null" }, "direction": "native to library", "behavior": "Show the Notes pane when the tray main-menu action is used." },
+    "app-error": { "payload": { "type": "string" }, "direction": "native to library", "behavior": "Display an actionable error; native code also shows/focuses the relevant window." }
+  },
+  "x-security": "Application-local data only. New settings and batch commands require the native library window identity. Editor acknowledgments and status checks require their native editor identity and correlated IDs. Do not grant frontend tray APIs or broader native capability permissions. Validate all mutations again in Rust. No HTTP status codes, external authentication, pagination or rate limits apply to these local commands.",
+  "x-lifecycle": "Default background true, conditional on successful tray creation. Close library hides in background mode. Disable background: hidden library is destroyed or recreated visibly so it cannot keep a windowless app alive; last real window closure exits normally. Explicit tray Exit coordinates all editor saves, cancels on failure/timeout, and exits only on success. Never await editor replies while holding a database or window-creation mutex. Block new window creation and conflicting destructive mutations during preparation. Native snapshots include current revision and storage batch checks it atomically."
+}
