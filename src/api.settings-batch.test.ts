@@ -16,6 +16,13 @@ describe("settings and batch IPC", () => {
     expect(invoke).toHaveBeenNthCalledWith(2, "set_run_in_background", { enabled: false });
   });
 
+  it("reads the native window capability contract", async () => {
+    const capabilities = { absoluteWindowPosition: true, alwaysOnTop: true };
+    vi.mocked(invoke).mockResolvedValue(capabilities);
+    await expect(notesApi.getPlatformCapabilities()).resolves.toEqual(capabilities);
+    expect(invoke).toHaveBeenCalledWith("platform_capabilities", {});
+  });
+
   it("sends explicit selections through the atomic batch commands", async () => {
     await notesApi.trashMany(["one", "two"]);
     expect(invoke).toHaveBeenNthCalledWith(1, "trash_notes", { ids: ["one", "two"] });

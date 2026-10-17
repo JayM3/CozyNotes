@@ -23,6 +23,7 @@ export type Note = Omit<NoteSummary, "snippet"> & {
 export type NoteDraft = { document: JSONContent; explicitTitle: string };
 export type LibraryFilter = { query: string; color: PaperColor | null };
 export type AppSettings = { runInBackground: boolean; trayAvailable: boolean; warning: string | null };
+export type PlatformCapabilities = { absoluteWindowPosition: boolean; alwaysOnTop: boolean };
 
 export const notesApi = {
   list: (trashed: boolean, query: string, color: PaperColor | null) =>
@@ -39,6 +40,7 @@ export const notesApi = {
   purge: (id: string) => invoke<void>("purge_note", { id }),
   emptyTrash: () => invoke<void>("empty_trash"),
   getSettings: () => invoke<AppSettings>("get_settings", {}),
+  getPlatformCapabilities: () => invoke<PlatformCapabilities>("platform_capabilities", {}),
   takeAppError: () => invoke<string | null>("take_app_error", {}),
   setRunInBackground: (enabled: boolean) => invoke<AppSettings>("set_run_in_background", { enabled }),
   trashMany: (ids: string[]) => invoke<void>("trash_notes", { ids }),

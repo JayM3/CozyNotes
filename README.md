@@ -19,6 +19,7 @@ CozyNotes is a quiet desktop notes app with soft paper colors and a cozy place t
 - **Pick your paper.** Choose Cream, Butter, Sage, Rose, Lavender, or Mist.
 - **Set the mood.** Open Settings to choose Warm, Night, or System. Your preference is remembered and shared across open windows.
 - **Stay within reach.** Use the CozyNotes icon in the system tray to open a note, show the main menu, or exit. Run in background is enabled by default and can be changed in Settings.
+- **Keep a note visible.** Use **Keep on top** in a note toolbar to keep that note above ordinary windows while you work elsewhere. The setting belongs to the current note window, resets when that window is closed, and is unavailable on Linux Wayland sessions.
 - **Tidy up together.** Select the circles beside notes to move several to Trash. Select all applies to the notes in your current search and paper-color filter.
 - **Keep what matters.** Duplicate a useful note or restore one from Trash before deleting it for good.
 
@@ -109,6 +110,8 @@ npm run tauri dev
 ```
 
 See the [tray, Settings, and selection verification record](docs/2026-10-17-settings-tray-selection-verification.md) for this feature's checks, and the [Everyday Use verification record](docs/everyday-use-verification.md) for earlier desktop checks and search measurements. Automated checks do not replace native interaction or installer testing.
+
+See the [Keep on top research and verification record](docs/2026-10-18-keep-on-top.md) for the native API decision, platform behavior, and Windows runtime checks.
 
 </details>
 

@@ -22,6 +22,7 @@ import { startWindowDrag } from "./windowDrag";
 import { ThemeMenuItems } from "./ThemePicker";
 import { EditorOperationCoordinator } from "./editorOperation";
 import type { EditorOperation, EditorOperationFinish } from "./editorOperation";
+import { KeepOnTopButton, useKeepOnTop } from "./KeepOnTop";
 
 const readingSizes = [12, 14, 16, 18, 20, 24];
 
@@ -51,6 +52,7 @@ export function NoteWindow({ id }: { id: string }) {
   const closeRef = useRef<() => void>(() => undefined);
   const nativeOperation = useRef<EditorOperationCoordinator | null>(null);
   const initialFocus = useRef(false);
+  const keepOnTop = useKeepOnTop(nativeWindow);
 
   const editor = useEditor({
     extensions: [StarterKit.configure({ underline: false, link: { openOnClick: false } }), Underline, TaskList, TaskItem.configure({ nested: true }), FindExtension],
@@ -306,6 +308,7 @@ export function NoteWindow({ id }: { id: string }) {
         <button className={`tool secondary-format ${state?.task ? "active" : ""}`} disabled={!ready || locked} aria-label="Checklist" title="Checklist" aria-pressed={state?.task ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleTaskList().run())}><CheckSquare size={16} /></button>
       </div>
       <div className="note-actions" data-tauri-drag-region>
+        <KeepOnTopButton controller={keepOnTop} disabled={!ready || locked} />
         <Popover label="Paper color" icon={<span className={`current-paper paper-${note?.color ?? "cream"}`} />} disabled={!ready || locked}>
           {paperColors.map(color => <button key={color} role="menuitemradio" aria-checked={note?.color === color} onClick={() => void changeColor(color)}><span className={`menu-swatch paper-${color}`} />{color[0].toUpperCase() + color.slice(1)}{note?.color === color && <Check size={15} className="menu-check" />}</button>)}
         </Popover>
@@ -329,6 +332,7 @@ export function NoteWindow({ id }: { id: string }) {
         <button className="tool close-tool" onClick={() => void close()} aria-label="Close note" title="Close note"><X size={17} /></button>
       </div>
     </header>
+    {keepOnTop.error && <div className="keep-on-top-error" role="alert"><span>{keepOnTop.error}</span><button type="button" disabled={locked || keepOnTop.pending} onClick={() => void keepOnTop.retry()}>Retry</button></div>}
     {findOpen && <div className="find-bar" role="search" aria-label="Find in note">
       <label className="find-field"><Search size={15} /><input ref={findInput} aria-label="Find in note" placeholder="Find in note" value={findQuery} onChange={event => { setQuery(event.target.value); if (editor) setFindQuery(editor, event.target.value); }} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); if (editor) stepFind(editor, event.shiftKey ? -1 : 1); } }} /></label>
       <span className="find-count" role="status" aria-live="polite">{activeIndex + 1} of {matchCount}</span>
