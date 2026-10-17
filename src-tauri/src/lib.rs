@@ -134,7 +134,7 @@ async fn create_note(
     let timestamp = now();
     let document = serde_json::json!({"type":"doc","content":[{"type":"paragraph"}]});
     let connection = state.0.lock().map_err(|error| error.to_string())?;
-    let note = storage::insert_note(&connection, &id, &document, "cream", timestamp)?;
+    let note = storage::insert_note(&connection, &id, &document, "cream", timestamp, "")?;
     drop(connection);
     drop(guard);
     let _ = app.emit("note-created", &id);
@@ -203,6 +203,7 @@ fn save_note(
     id: String,
     expected_revision: i64,
     document: Value,
+    explicit_title: Option<String>,
 ) -> Result<Note, String> {
     let windows = app.state::<WindowCoordinator>();
     let _guard = windows.0.lock().map_err(|error| error.to_string())?;
@@ -214,7 +215,14 @@ fn save_note(
         return Err("This editor is prepared for another operation".into());
     }
     let mut connection = state.0.lock().map_err(|error| error.to_string())?;
-    let note = storage::save_document(&mut connection, &id, expected_revision, &document, now())?;
+    let note = storage::save_document(
+        &mut connection,
+        &id,
+        expected_revision,
+        &document,
+        now(),
+        explicit_title.as_deref(),
+    )?;
     drop(connection);
     let _ = app.emit("note-changed", &id);
     desktop::refresh(&app);
@@ -305,7 +313,14 @@ async fn duplicate_note(
         .ok_or("This saved note needs recovery and cannot be duplicated.")?;
     let copy_id = uuid::Uuid::new_v4().to_string();
     let timestamp = now();
-    let note = storage::insert_note(&connection, &copy_id, &document, &source.color, timestamp)?;
+    let note = storage::insert_note(
+        &connection,
+        &copy_id,
+        &document,
+        &source.color,
+        timestamp,
+        &source.explicit_title,
+    )?;
     drop(connection);
     drop(guard);
     let _ = app.emit("note-created", &copy_id);

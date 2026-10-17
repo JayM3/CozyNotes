@@ -120,6 +120,16 @@ h1 { margin: 0; color: var(--color-ink); font: 700 var(--text-heading)/1.1 var(-
 .find-field:focus-within { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .find-count { flex: 0 0 auto; min-width: 40px; padding: 0 var(--space-1); color: var(--color-secondary); font-size: 11px; text-align: center; }
 .note-body { min-height: 48px; flex: 1; overflow: auto; padding: var(--space-4) var(--space-4) var(--space-3); }
+.note-heading { flex: 0 0 auto; min-width: 0; margin: 0 var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid color-mix(in oklch, var(--color-ink) 15%, transparent); }
+.note-title-field { position: relative; min-width: 0; }
+.note-title-input, .note-title-highlights { width: 100%; min-width: 0; margin: 0; padding: 2px 0; border: 0; border-radius: 0; color: var(--color-ink); background: transparent; font-family: inherit; font-size: calc(var(--reading-size) + 2px); font-weight: 600; line-height: 1.5; letter-spacing: normal; }
+.note-title-input { display: block; caret-color: var(--color-ink); }
+.note-title-input::placeholder { color: var(--color-secondary); opacity: .75; }
+.note-title-input.has-find-highlights { color: transparent; }
+.note-title-highlights { position: absolute; inset: 0; overflow: hidden; white-space: pre; pointer-events: none; }
+.note-title-highlights mark { padding: 0; color: inherit; }
+.note-body > div:has(> .note-editor) { min-height: 100%; display: flex; flex-direction: column; }
+.note-body .note-editor { flex: 1; }
 .note-editor { min-height: 100%; outline: none; color: var(--color-ink); font-size: var(--reading-size); line-height: 1.6; overflow-wrap: anywhere; }
 .note-editor p { margin: 0 0 1em; }
 .note-editor ul, .note-editor ol { padding-left: 1.35em; }
@@ -210,6 +220,7 @@ h1 { margin: 0; color: var(--color-ink); font: 700 var(--text-heading)/1.1 var(-
   .note-toolbar .secondary-format { display: none; }
   .compact-formats { display: block; }
   .note-body { padding: var(--space-3) var(--space-2); }
+  .note-heading { margin-inline: var(--space-2); }
 }
 @media (max-height: 600px) {
   .empty-state { padding: var(--space-6) var(--space-4) var(--space-4); }

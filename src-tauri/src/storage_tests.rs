@@ -42,15 +42,236 @@ fn legacy_insert(connection: &Connection, id: &str, raw: &str, text: &str) {
 }
 
 #[test]
+fn schema_one_adds_empty_titles_without_rewriting_existing_notes() {
+    let root = TestRoot::new();
+    let previous = legacy_database(&root.database());
+    previous.execute_batch("ALTER TABLE notes ADD COLUMN search_text TEXT NOT NULL DEFAULT ''; ALTER TABLE notes ADD COLUMN title TEXT NOT NULL DEFAULT 'Untitled note'; ALTER TABLE notes ADD COLUMN preview TEXT NOT NULL DEFAULT ''; ALTER TABLE notes ADD COLUMN document_error TEXT; CREATE INDEX notes_recent ON notes(updated_at DESC, id); PRAGMA user_version=1;").unwrap();
+    let raw = "{ \"type\": \"doc\", \"content\": [{\"type\": \"paragraph\", \"content\": [{\"type\": \"text\", \"text\": \"Original first line\"}]}] }";
+    legacy_insert(&previous, "old", raw, "Original first line\n");
+    legacy_insert(&previous, "recovery", "{truncated", "recoverable text");
+    previous.execute_batch("UPDATE notes SET title='Original first line', preview='Original first line', search_text='original first line\n' WHERE id='old'; UPDATE notes SET trashed_at=33, document_error='Unreadable' WHERE id='recovery';").unwrap();
+    let rows = |connection: &Connection| {
+        let mut statement = connection.prepare("SELECT id, document_json, plain_text, color, revision, created_at, updated_at, trashed_at, search_text, title, preview, document_error FROM notes ORDER BY id").unwrap();
+        statement
+            .query_map([], |row| {
+                (0..12)
+                    .map(|column| row.get::<_, rusqlite::types::Value>(column))
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
+    let before = rows(&previous);
+    let connection = open_database(&root.database()).unwrap();
+    assert_eq!(rows(&connection), before);
+    assert_eq!(
+        load_note(&connection, "old", false).unwrap().explicit_title,
+        ""
+    );
+    assert_eq!(
+        load_note(&connection, "recovery", true)
+            .unwrap()
+            .explicit_title,
+        ""
+    );
+    assert_eq!(
+        list_notes(&connection, false, "ORIGINAL", None)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        connection
+            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        SCHEMA_VERSION
+    );
+    let snapshots = fs::read_dir(root.0.join("recovery"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect::<Vec<_>>();
+    assert_eq!(snapshots.len(), 1);
+    let snapshot = Connection::open(&snapshots[0]).unwrap();
+    assert_eq!(rows(&snapshot), before);
+    assert_eq!(
+        snapshot
+            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    drop(connection);
+    let reopened = open_database(&root.database()).unwrap();
+    assert_eq!(rows(&reopened), before);
+    assert_eq!(fs::read_dir(root.0.join("recovery")).unwrap().count(), 1);
+}
+
+#[test]
+fn title_and_body_save_atomically_and_preserve_omitted_titles() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    insert_note(&connection, "one", &doc("Original body"), "sage", 1, "").unwrap();
+    let saved = save_document(
+        &mut connection,
+        "one",
+        0,
+        &doc("Updated body"),
+        2,
+        Some("Packing list"),
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            saved.explicit_title.as_str(),
+            saved.title.as_str(),
+            saved.revision
+        ),
+        ("Packing list", "Packing list", 1)
+    );
+    assert_eq!(saved.preview, "Updated body");
+    assert!(
+        save_document(
+            &mut connection,
+            "one",
+            0,
+            &doc("Stale body"),
+            3,
+            Some("Stale title")
+        )
+        .is_err()
+    );
+    assert!(
+        save_document(
+            &mut connection,
+            "one",
+            1,
+            &doc("Rejected body"),
+            3,
+            Some("Invalid\ntitle")
+        )
+        .is_err()
+    );
+    let unchanged = load_note(&connection, "one", false).unwrap();
+    assert_eq!(unchanged.document, Some(doc("Updated body")));
+    assert_eq!(unchanged.explicit_title, "Packing list");
+    assert_eq!((unchanged.revision, unchanged.updated_at), (1, 2));
+    let saved = save_document(
+        &mut connection,
+        "one",
+        1,
+        &doc("Body from older caller"),
+        4,
+        None,
+    )
+    .unwrap();
+    assert_eq!(saved.explicit_title, "Packing list");
+    assert_eq!(
+        active_note_metadata(&connection).unwrap()[0].title,
+        "Packing list"
+    );
+    drop(connection);
+    let mut connection = open_database(&root.database()).unwrap();
+    assert_eq!(
+        load_note(&connection, "one", false).unwrap().explicit_title,
+        "Packing list"
+    );
+    let cleared = save_document(
+        &mut connection,
+        "one",
+        2,
+        &doc("Body fallback"),
+        5,
+        Some(""),
+    )
+    .unwrap();
+    assert_eq!(cleared.title, "Body fallback");
+    assert_eq!(cleared.explicit_title, "");
+    assert!(
+        list_notes(&connection, false, "Packing", None)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn title_and_body_search_support_unicode_trash_and_title_only_notes() {
+    let root = TestRoot::new();
+    let connection = open_database(&root.database()).unwrap();
+    insert_note(
+        &connection,
+        "one",
+        &doc("Bring passport"),
+        "sage",
+        1,
+        "Straße Café",
+    )
+    .unwrap();
+    insert_note(&connection, "title-only", &doc(""), "cream", 2, "Weekend").unwrap();
+    for query in ["STRASSE", "CAFE\u{301}", "passport"] {
+        let results = list_notes(&connection, false, query, Some("sage")).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "one");
+        assert!(results[0].snippet.iter().any(|part| part.matched));
+    }
+    let title_only = list_notes(&connection, false, "weekend", None).unwrap();
+    assert_eq!(title_only.len(), 1);
+    assert_eq!(title_only[0].title, "Weekend");
+    assert!(title_only[0].snippet.iter().any(|part| part.matched));
+    connection
+        .execute("UPDATE notes SET trashed_at=3 WHERE id='one'", [])
+        .unwrap();
+    assert!(
+        list_notes(&connection, false, "STRASSE", None)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        list_notes(&connection, true, "STRASSE", Some("sage"))
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn copying_a_note_preserves_its_explicit_title_body_and_color() {
+    let root = TestRoot::new();
+    let connection = open_database(&root.database()).unwrap();
+    let source = insert_note(
+        &connection,
+        "source",
+        &doc("Keep my body"),
+        "rose",
+        1,
+        "My heading",
+    )
+    .unwrap();
+    let copy = insert_note(
+        &connection,
+        "copy",
+        source.document.as_ref().unwrap(),
+        &source.color,
+        2,
+        &source.explicit_title,
+    )
+    .unwrap();
+    assert_eq!(copy.document, source.document);
+    assert_eq!(copy.explicit_title, source.explicit_title);
+    assert_eq!(copy.title, source.title);
+    assert_eq!(copy.color, source.color);
+    assert_eq!(copy.revision, 0);
+}
+
+#[test]
 fn persistence_and_stale_revisions_are_atomic() {
     let root = TestRoot::new();
     let mut connection = open_database(&root.database()).unwrap();
-    let note = insert_note(&connection, "one", &doc("before"), "cream", 10).unwrap();
+    let note = insert_note(&connection, "one", &doc("before"), "cream", 10, "").unwrap();
     assert_eq!(note.revision, 0);
-    let saved = save_document(&mut connection, "one", 0, &doc("after"), 20).unwrap();
+    let saved = save_document(&mut connection, "one", 0, &doc("after"), 20, None).unwrap();
     assert_eq!((saved.revision, saved.updated_at), (1, 20));
     assert!(
-        save_document(&mut connection, "one", 0, &doc("stale"), 30)
+        save_document(&mut connection, "one", 0, &doc("stale"), 30, None)
             .unwrap_err()
             .contains("Stale")
     );
@@ -230,7 +451,7 @@ fn unreadable_or_unsupported_notes_remain_readable_but_cannot_be_overwritten() {
         let json = serde_json::to_value(&note).unwrap();
         assert!(json["document"].is_null());
         assert!(
-            save_document(&mut connection, id, 7, &doc("replacement"), 100)
+            save_document(&mut connection, id, 7, &doc("replacement"), 100, None)
                 .unwrap_err()
                 .contains("cannot be overwritten")
         );
@@ -265,7 +486,7 @@ fn document_validation_keeps_all_previously_configured_starterkit_nodes_and_mark
     document::validate(&document).unwrap();
     let root = TestRoot::new();
     let connection = open_database(&root.database()).unwrap();
-    insert_note(&connection, "rich", &document, "mist", 1).unwrap();
+    insert_note(&connection, "rich", &document, "mist", 1, "").unwrap();
     assert_eq!(
         load_note(&connection, "rich", false).unwrap().document,
         Some(document)
@@ -276,7 +497,7 @@ fn document_validation_keeps_all_previously_configured_starterkit_nodes_and_mark
 fn invalid_saves_never_modify_existing_rows() {
     let root = TestRoot::new();
     let mut connection = open_database(&root.database()).unwrap();
-    insert_note(&connection, "one", &doc("original"), "cream", 5).unwrap();
+    insert_note(&connection, "one", &doc("original"), "cream", 5, "").unwrap();
     for invalid in [
         json!({"type":"doc","content":[]}),
         json!({"type":"doc","content":[{"type":"text","text":"wrong parent"}]}),
@@ -284,7 +505,7 @@ fn invalid_saves_never_modify_existing_rows() {
         json!({"type":"doc","content":[{"type":"taskList","content":[{"type":"taskItem","attrs":{"checked":"true"},"content":[{"type":"paragraph"}]}]}]}),
         json!({"type":"doc","content":[{"type":"codeBlock","content":[{"type":"text","text":"marked code","marks":[{"type":"bold"}]}]}]}),
     ] {
-        assert!(save_document(&mut connection, "one", 0, &invalid, 100).is_err());
+        assert!(save_document(&mut connection, "one", 0, &invalid, 100, None).is_err());
         let original = load_note(&connection, "one", false).unwrap();
         assert_eq!((original.revision, original.updated_at), (0, 5));
         assert_eq!(original.document, Some(doc("original")));
@@ -313,7 +534,7 @@ fn unicode_search_and_first_match_excerpts_preserve_original_graphemes() {
         "{} Stra\u{df}e CAF\u{c9} cafe\u{301} \u{3a3}\u{3c2}\u{3c3} family \u{1f469}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466} suffix",
         "prefix ".repeat(30)
     );
-    insert_note(&connection, "unicode", &doc(&text), "sage", 1).unwrap();
+    insert_note(&connection, "unicode", &doc(&text), "sage", 1, "").unwrap();
     for query in [
         "STRASSE",
         "caf\u{e9}",
@@ -378,6 +599,7 @@ fn color_and_trash_filters_compose_and_summaries_have_no_full_bodies() {
             &doc("shared title\nsecond line text"),
             color,
             time,
+            "",
         )
         .unwrap();
     }
@@ -430,11 +652,11 @@ fn excerpts_do_not_interpret_html_or_expand_to_an_entire_long_match() {
 fn trashed_notes_cannot_be_saved_or_accidentally_restored_by_save() {
     let root = TestRoot::new();
     let mut connection = open_database(&root.database()).unwrap();
-    insert_note(&connection, "one", &doc("original"), "cream", 1).unwrap();
+    insert_note(&connection, "one", &doc("original"), "cream", 1, "").unwrap();
     connection
         .execute("UPDATE notes SET trashed_at=5 WHERE id='one'", [])
         .unwrap();
-    assert!(save_document(&mut connection, "one", 0, &doc("replacement"), 10).is_err());
+    assert!(save_document(&mut connection, "one", 0, &doc("replacement"), 10, None).is_err());
     assert_eq!(
         load_note(&connection, "one", true).unwrap().document,
         Some(doc("original"))
@@ -446,9 +668,9 @@ fn trashed_notes_cannot_be_saved_or_accidentally_restored_by_save() {
 fn batch_trash_deduplicates_and_requires_current_active_revisions_atomically() {
     let root = TestRoot::new();
     let mut connection = open_database(&root.database()).unwrap();
-    insert_note(&connection, "one", &doc("one"), "cream", 1).unwrap();
-    insert_note(&connection, "two", &doc("two"), "sage", 2).unwrap();
-    insert_note(&connection, "three", &doc("three"), "rose", 3).unwrap();
+    insert_note(&connection, "one", &doc("one"), "cream", 1, "").unwrap();
+    insert_note(&connection, "two", &doc("two"), "sage", 2, "").unwrap();
+    insert_note(&connection, "three", &doc("three"), "rose", 3, "").unwrap();
 
     trash_notes_batch(
         &mut connection,
@@ -467,8 +689,8 @@ fn batch_trash_deduplicates_and_requires_current_active_revisions_atomically() {
 fn batch_trash_rejects_missing_trashed_or_stale_rows_without_partial_mutation() {
     let root = TestRoot::new();
     let mut connection = open_database(&root.database()).unwrap();
-    insert_note(&connection, "one", &doc("one"), "cream", 1).unwrap();
-    insert_note(&connection, "two", &doc("two"), "sage", 2).unwrap();
+    insert_note(&connection, "one", &doc("one"), "cream", 1, "").unwrap();
+    insert_note(&connection, "two", &doc("two"), "sage", 2, "").unwrap();
     connection
         .execute("UPDATE notes SET trashed_at=5 WHERE id='two'", [])
         .unwrap();
@@ -496,8 +718,8 @@ fn batch_trash_rejects_missing_trashed_or_stale_rows_without_partial_mutation() 
 fn batch_purge_requires_every_row_to_be_trashed_and_rolls_back_on_invalid_selection() {
     let root = TestRoot::new();
     let mut connection = open_database(&root.database()).unwrap();
-    insert_note(&connection, "one", &doc("one"), "cream", 1).unwrap();
-    insert_note(&connection, "two", &doc("two"), "sage", 2).unwrap();
+    insert_note(&connection, "one", &doc("one"), "cream", 1, "").unwrap();
+    insert_note(&connection, "two", &doc("two"), "sage", 2, "").unwrap();
     connection
         .execute("UPDATE notes SET trashed_at=5 WHERE id='one'", [])
         .unwrap();
@@ -523,7 +745,7 @@ fn batch_trash_supports_selections_larger_than_one_hundred_twenty_eight() {
         .map(|index| format!("note-{index}"))
         .collect::<Vec<_>>();
     for (index, id) in ids.iter().enumerate() {
-        insert_note(&connection, id, &doc(id), "cream", index as i64).unwrap();
+        insert_note(&connection, id, &doc(id), "cream", index as i64, "").unwrap();
     }
     let borrowed_ids = ids.iter().map(String::as_str).collect::<Vec<_>>();
     let revisions = ids.iter().map(|id| (id.as_str(), 0)).collect::<Vec<_>>();
@@ -541,8 +763,8 @@ fn batch_trash_supports_selections_larger_than_one_hundred_twenty_eight() {
 fn batch_trash_rolls_back_when_a_later_update_fails() {
     let root = TestRoot::new();
     let mut connection = open_database(&root.database()).unwrap();
-    insert_note(&connection, "one", &doc("one"), "cream", 1).unwrap();
-    insert_note(&connection, "two", &doc("two"), "sage", 2).unwrap();
+    insert_note(&connection, "one", &doc("one"), "cream", 1, "").unwrap();
+    insert_note(&connection, "two", &doc("two"), "sage", 2, "").unwrap();
     connection
         .execute_batch("CREATE TRIGGER reject_second_trash BEFORE UPDATE OF trashed_at ON notes WHEN OLD.id='two' BEGIN SELECT RAISE(ABORT, 'injected batch failure'); END;")
         .unwrap();

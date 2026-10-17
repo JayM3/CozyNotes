@@ -7,7 +7,7 @@ import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
 import { redoDepth, undoDepth } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
-import { clearFind, FindExtension, getFindState, hasCompletedTasks, resetCompletedTasks, setFindQuery, stepFind } from "./editorTools";
+import { clearFind, FindExtension, getFindState, hasCompletedTasks, resetCompletedTasks, setFindQuery, setFindTitle, stepFind } from "./editorTools";
 
 const editors: Editor[] = [];
 
@@ -25,6 +25,35 @@ afterEach(() => {
 });
 
 describe("FindExtension", () => {
+  it("searches the title before the body, wraps between both, and never changes the document", () => {
+    const editor = makeEditor("<p>Pack a bag</p>");
+    const original = editor.getJSON();
+    const updates = vi.fn();
+    editor.on("update", updates);
+    setFindTitle(editor, "Pack for the weekend");
+    expect(setFindQuery(editor, "pack").matches).toEqual([{ from: 0, to: 4, inTitle: true }, { from: 1, to: 5 }]);
+    expect(editor.view.dom.querySelector('[data-find-active="true"]')).toBeNull();
+    expect(stepFind(editor, 1)).toEqual({ from: 1, to: 5 });
+    expect(editor.view.dom.querySelector('[data-find-active="true"]')?.textContent).toBe("Pack");
+    expect(stepFind(editor, 1)).toEqual({ from: 0, to: 4, inTitle: true });
+    setFindTitle(editor, "Weekend");
+    expect(getFindState(editor).matches).toEqual([{ from: 1, to: 5 }]);
+    expect(getFindState(editor).activeIndex).toBe(0);
+    expect(editor.getJSON()).toEqual(original);
+    expect(updates).not.toHaveBeenCalled();
+    expect(undoDepth(editor.state)).toBe(0);
+  });
+
+  it("keeps an active body match when title matches are added and supports Unicode in titles", () => {
+    const editor = makeEditor("<p>Straße</p>");
+    setFindQuery(editor, "STRASSE");
+    setFindTitle(editor, "Straße Café");
+    expect(getFindState(editor).activeIndex).toBe(1);
+    expect(stepFind(editor, -1)).toEqual({ from: 0, to: 6, inTitle: true });
+    expect(setFindQuery(editor, "CAFE\u0301").matches).toEqual([{ from: 7, to: 11, inTitle: true }]);
+    clearFind(editor);
+    expect(getFindState(editor).matches).toEqual([]);
+  });
   it("finds across formatting while treating paragraphs and hard breaks as boundaries", () => {
     const editor = makeEditor("<p>Hel<strong>lo</strong> hello</p><p>hel<br>lo</p><p>hel</p><p>lo</p>");
     expect(setFindQuery(editor, "HELLO")).toEqual({ query: "HELLO", matches: [{ from: 1, to: 6 }, { from: 7, to: 12 }], activeIndex: 0 });
