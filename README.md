@@ -46,7 +46,7 @@ Use `Ctrl` on Windows/Linux or `Cmd` on macOS:
 
 ## Growing gently
 
-CozyNotes is in early development, currently **0.1.2**. Download the app from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
+CozyNotes is in early development, currently **0.1.5**. Download the app from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
 
 | Platform | Download |
 | --- | --- |
