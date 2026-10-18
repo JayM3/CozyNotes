@@ -96,8 +96,8 @@ fn open_note_window(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
         .decorations(false)
         .resizable(true)
         .visible(false)
-        .inner_size(360.0, 400.0)
-        .min_inner_size(320.0, 240.0)
+        .inner_size(desk::DEFAULT_WIDTH, desk::DEFAULT_HEIGHT)
+        .min_inner_size(desk::MIN_WIDTH, 240.0)
         .build()
         .map_err(|error| error.to_string())
         .and_then(|window| {

@@ -27,6 +27,7 @@ import { KeepOnTopButton, useKeepOnTop } from "./KeepOnTop";
 import { CozyImage } from "./ImageNode";
 import { imageFiles, imageType, MAX_IMAGE_BYTES } from "./imageImport";
 import { NoteHistory } from "./NoteHistory";
+import { NoteToolbar } from "./NoteToolbar";
 
 const readingSizes = [12, 14, 16, 18, 20, 24];
 export function NoteWindow({ id }: { id: string }) {
@@ -382,12 +383,12 @@ export function NoteWindow({ id }: { id: string }) {
       <button className="tool close-tool" aria-label="Close folded note" title="Close note" onClick={() => void close()}><X size={17} /></button>
     </header>}
     <div className="note-surface" inert={historyOpen}>
-    <header className="note-toolbar" data-tauri-drag-region onMouseDown={startWindowDrag}>
+    <NoteToolbar key={id} id={id}>
       <div className="toolbar-group" role="group" aria-label="Text formatting" data-tauri-drag-region>
-        <button className="tool" disabled={!ready || locked} aria-label="Insert image" title="Insert image" onMouseDown={event => event.preventDefault()} onClick={chooseImage}><ImagePlus size={16} /></button>
         <button className={`tool ${state?.bold ? "active" : ""}`} disabled={!ready || locked} aria-label="Bold" title="Bold" aria-pressed={state?.bold ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleBold().run())}><Bold size={16} /></button>
         <button className={`tool secondary-format ${state?.italic ? "active" : ""}`} disabled={!ready || locked} aria-label="Italic" title="Italic" aria-pressed={state?.italic ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleItalic().run())}><Italic size={16} /></button>
         <button className={`tool secondary-format ${state?.underline ? "active" : ""}`} disabled={!ready || locked} aria-label="Underline" title="Underline" aria-pressed={state?.underline ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleUnderline().run())}><UnderlineIcon size={16} /></button>
+        <button className="tool" disabled={!ready || locked} aria-label="Insert image" title="Insert image" onMouseDown={event => event.preventDefault()} onClick={chooseImage}><ImagePlus size={16} /></button>
         <button className={`tool secondary-format ${state?.bullet ? "active" : ""}`} disabled={!ready || locked} aria-label="Bullet list" title="Bullet list" aria-pressed={state?.bullet ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleBulletList().run())}><List size={16} /></button>
         <button className={`tool secondary-format ${state?.task ? "active" : ""}`} disabled={!ready || locked} aria-label="Checklist" title="Checklist" aria-pressed={state?.task ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleTaskList().run())}><CheckSquare size={16} /></button>
       </div>
@@ -396,6 +397,7 @@ export function NoteWindow({ id }: { id: string }) {
         <Popover label="Paper color" icon={<span className={`current-paper paper-${note?.color ?? "cream"}`} />} disabled={!ready || locked}>
           {paperColors.map(color => <button key={color} role="menuitemradio" aria-checked={note?.color === color} onClick={() => void changeColor(color)}><span className={`menu-swatch paper-${color}`} />{color[0].toUpperCase() + color.slice(1)}{note?.color === color && <Check size={15} className="menu-check" />}</button>)}
         </Popover>
+        <button className="tool" disabled={locked} aria-label="New note" title="New note" onClick={() => void windowAction(notesApi.create, "Couldn't create a note.")}><Plus size={17} /></button>
         <Popover label="More note actions" icon={<MoreHorizontal size={17} />}>
           <button role="menuitemcheckbox" aria-checked={Boolean(note?.favorite)} disabled={!ready || locked} onClick={() => void changeFavorite()}><Star size={15} fill={note?.favorite ? "currentColor" : "none"} />{note?.favorite ? "Remove from favorites" : "Add to favorites"}</button>
           <button role="menuitem" disabled={!ready || locked} onClick={() => void openHistory()}><History size={15} /> Note history</button>
@@ -418,7 +420,7 @@ export function NoteWindow({ id }: { id: string }) {
         </Popover>
         <button className="tool close-tool" onClick={() => void close()} aria-label="Close note" title="Close note"><X size={17} /></button>
       </div>
-    </header>
+    </NoteToolbar>
     {keepOnTop.error && <div className="keep-on-top-error" role="alert"><span>{keepOnTop.error}</span><button type="button" disabled={locked || keepOnTop.pending} onClick={() => void keepOnTop.retry()}>Retry</button></div>}
     {findOpen && <div className="find-bar" role="search" aria-label="Find in note">
       <label className="find-field"><Search size={15} /><input ref={findInput} aria-label="Find in note" placeholder="Find in note" value={findQuery} onChange={event => { setQuery(event.target.value); if (editor) setFindQuery(editor, event.target.value); }} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); if (editor) stepFind(editor, event.shiftKey ? -1 : 1); } }} /></label>

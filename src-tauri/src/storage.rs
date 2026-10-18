@@ -169,7 +169,7 @@ fn migrate(connection: &mut Connection, path: &Path, version: i64) -> Result<(),
         );
         CREATE TABLE note_windows (
             note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
-            width REAL NOT NULL DEFAULT 360, height REAL NOT NULL DEFAULT 400,
+            width REAL NOT NULL DEFAULT 305, height REAL NOT NULL DEFAULT 385,
             x INTEGER, y INTEGER, folded INTEGER NOT NULL DEFAULT 0,
             is_open INTEGER NOT NULL DEFAULT 0
         );

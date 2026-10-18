@@ -14,6 +14,7 @@ CozyNotes is a quiet desktop notes app with soft paper colors and a cozy place t
 ## Make yourself at home
 
 - **Room to think.** Open notes in their own windows and let autosave take care of your writing.
+- **Fit your workspace.** New notes open at a compact 305 by 385 size. Resize the toolbar with its bottom handle; each note remembers its preferred toolbar height.
 - **A little structure.** Use rich text, bullet lists, and checklists. Reset completed items when a list needs a fresh start.
 - **Find things again.** Search your library, filter by paper color, or find a word inside a note.
 - **Pick your paper.** Choose Cream, Butter, Sage, Rose, Lavender, or Mist.
@@ -51,7 +52,7 @@ Use `Ctrl` on Windows/Linux or `Cmd` on macOS:
 
 ## Growing gently
 
-CozyNotes is in early development, currently **0.2.0**. Download the app from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
+CozyNotes is in early development, currently **0.2.1**. Download the app from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
 
 | Platform | Download |
 | --- | --- |

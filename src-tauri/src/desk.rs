@@ -8,6 +8,9 @@ use std::{
 use tauri::{LogicalSize, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
 
 pub const FOLDED_HEIGHT: f64 = 52.0;
+pub const DEFAULT_WIDTH: f64 = 305.0;
+pub const DEFAULT_HEIGHT: f64 = 385.0;
+pub const MIN_WIDTH: f64 = 305.0;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,8 +26,8 @@ pub struct Placement {
 impl Default for Placement {
     fn default() -> Self {
         Self {
-            width: 360.0,
-            height: 400.0,
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
             x: None,
             y: None,
             folded: false,
@@ -107,8 +110,8 @@ pub fn fit(p: &Placement, areas: &[WorkArea]) -> Placement {
     let area = if intersects { selected } else { first };
     result.width = p
         .width
-        .max(320.0)
-        .min((area.width as f64 / area.scale).max(320.0));
+        .max(MIN_WIDTH)
+        .min((area.width as f64 / area.scale).max(MIN_WIDTH));
     result.height = p
         .height
         .max(240.0)
@@ -192,7 +195,7 @@ fn apply(window: &WebviewWindow, p: &Placement) -> Result<(), String> {
     window.set_resizable(!p.folded).map_err(|e| e.to_string())?;
     window
         .set_min_size(Some(LogicalSize::new(
-            320.0,
+            MIN_WIDTH,
             if p.folded { FOLDED_HEIGHT } else { 240.0 },
         )))
         .map_err(|e| e.to_string())?;
@@ -240,7 +243,6 @@ pub fn attach(window: &WebviewWindow) -> Result<(), String> {
         .collect();
     let mut p = fit(&stored, &areas);
     p.is_open = true;
-    apply(window, &p)?;
     if crate::platform_capabilities().absolute_window_position {
         if let Some((x, y)) = p.x.zip(p.y) {
             window
@@ -248,6 +250,11 @@ pub fn attach(window: &WebviewWindow) -> Result<(), String> {
                 .map_err(|e| e.to_string())?;
         }
     }
+    // Windows settles the hidden caption/shadow insets when the frameless
+    // window is shown. Applying its final size earlier adds that caption height.
+    #[cfg(target_os = "windows")]
+    window.show().map_err(|e| e.to_string())?;
+    apply(window, &p)?;
     persist(app, &id, &p)?;
     app.state::<Desk>()
         .0
@@ -273,7 +280,7 @@ pub fn attach(window: &WebviewWindow) -> Result<(), String> {
                 WindowEvent::Resized(size) if !p.folded => {
                     let scale = native.scale_factor().map_err(|e| e.to_string())?;
                     let size = size.to_logical::<f64>(scale);
-                    if size.width >= 320.0 && size.height >= 240.0 {
+                    if size.width >= MIN_WIDTH && size.height >= 240.0 {
                         p.width = size.width;
                         p.height = size.height;
                     }
@@ -339,6 +346,20 @@ pub fn set_folded(window: &WebviewWindow, folded: bool) -> Result<Placement, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn standard_note_size_survives_monitor_fitting() {
+        let p = fit(
+            &Placement::default(),
+            &[WorkArea {
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1040,
+                scale: 1.5,
+            }],
+        );
+        assert_eq!((p.width, p.height), (305.0, 385.0));
+    }
     #[test]
     fn removed_monitor_returns_note_to_work_area() {
         let p = Placement {
