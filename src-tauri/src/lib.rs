@@ -5,6 +5,7 @@ mod document;
 mod history;
 mod operations;
 mod settings;
+mod snapping;
 mod storage;
 
 use operations::{OperationCoordinator, OperationKind, Preparation};
@@ -94,10 +95,11 @@ fn open_note_window(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
     let result = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
         .title("CozyNotes")
         .decorations(false)
+        .maximizable(!cfg!(windows))
         .resizable(true)
         .visible(false)
         .inner_size(desk::DEFAULT_WIDTH, desk::DEFAULT_HEIGHT)
-        .min_inner_size(desk::MIN_WIDTH, 240.0)
+        .min_inner_size(desk::MIN_WIDTH, desk::MIN_HEIGHT)
         .build()
         .map_err(|error| error.to_string())
         .and_then(|window| {

@@ -552,7 +552,7 @@ dependencies = [
 
 [[package]]
 name = "cozynotes"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "caseless",
  "rusqlite",
@@ -564,6 +564,7 @@ dependencies = [
  "unicode-normalization",
  "unicode-segmentation",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

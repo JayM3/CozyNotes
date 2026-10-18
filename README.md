@@ -15,6 +15,8 @@ CozyNotes is a quiet desktop notes app with soft paper colors and a cozy place t
 
 - **Room to think.** Open notes in their own windows and let autosave take care of your writing.
 - **Fit your workspace.** New notes open at a compact 305 by 385 size. Resize the toolbar with its bottom handle; each note remembers its preferred toolbar height.
+- **Line notes up.** On Windows, drag notes close to a desktop edge or another note to snap their edges together. Keep dragging to pull away. Notes keep their size and move independently, including when folded.
+- **Match a neighboring note.** On Windows, resize any side or corner of a note touching another note to snap to its width, height, or both. The other note stays fixed; keep resizing to pull away.
 - **A little structure.** Use rich text, bullet lists, and checklists. Reset completed items when a list needs a fresh start.
 - **Find things again.** Search your library, filter by paper color, or find a word inside a note.
 - **Pick your paper.** Choose Cream, Butter, Sage, Rose, Lavender, or Mist.
@@ -32,6 +34,10 @@ CozyNotes is a quiet desktop notes app with soft paper colors and a cozy place t
 ## Settle in
 
 Create a note from the library and start writing. Drag the library by its heading or branding; drag a note using empty space along its toolbar or footer. Closing a note saves it and keeps it in your library.
+
+Windows notes snap to all four desktop work-area edges, clear of the taskbar, and to the sides of other visible CozyNotes notes. Adjacent notes can also align their top, bottom, left, or right edges. Snapping catches within 10 logical pixels and releases beyond 22 logical pixels; distances follow display scaling. Minimized, hidden, and other virtual-desktop notes are excluded. The library is not a snap target. macOS and Linux retain their existing window dragging.
+
+When resizing notes that touch, left/right handles can snap to a neighbor's width, top/bottom handles to its height, and corners to both. The opposite edges stay anchored. Resize snapping uses notes touching at the start of the gesture and respects the minimum note size.
 
 With Run in background enabled, closing the main window keeps CozyNotes available from its icon beside the Windows clock. Right-click that icon for **Notes**, **Show main menu**, and **Exit CozyNotes**. Exit waits for open drafts to save; if a draft cannot save, it stays open for recovery.
 
@@ -52,7 +58,7 @@ Use `Ctrl` on Windows/Linux or `Cmd` on macOS:
 
 ## Growing gently
 
-CozyNotes is in early development, currently **0.2.1**. Download the app from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
+CozyNotes is in early development, currently **0.2.2**. Download the app from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
 
 | Platform | Download |
 | --- | --- |

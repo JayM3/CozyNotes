@@ -11,6 +11,7 @@ pub const FOLDED_HEIGHT: f64 = 52.0;
 pub const DEFAULT_WIDTH: f64 = 305.0;
 pub const DEFAULT_HEIGHT: f64 = 385.0;
 pub const MIN_WIDTH: f64 = 305.0;
+pub const MIN_HEIGHT: f64 = 240.0;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,8 +115,8 @@ pub fn fit(p: &Placement, areas: &[WorkArea]) -> Placement {
         .min((area.width as f64 / area.scale).max(MIN_WIDTH));
     result.height = p
         .height
-        .max(240.0)
-        .min((area.height as f64 / area.scale).max(240.0));
+        .max(MIN_HEIGHT)
+        .min((area.height as f64 / area.scale).max(MIN_HEIGHT));
     let width = (result.width * area.scale).round() as i32;
     let height = (if result.folded {
         FOLDED_HEIGHT
@@ -132,6 +133,17 @@ pub fn fit(p: &Placement, areas: &[WorkArea]) -> Placement {
         (area.y as i64 + area.height as i64 - height as i64).max(area.y as i64) as i32,
     ));
     result
+}
+
+#[cfg(any(windows, test))]
+fn fit_with_client_offset(p: &Placement, areas: &[WorkArea], offset: (i32, i32)) -> Placement {
+    let mut visible = p.clone();
+    visible.x = p.x.map(|x| x.saturating_add(offset.0));
+    visible.y = p.y.map(|y| y.saturating_add(offset.1));
+    let mut fitted = fit(&visible, areas);
+    fitted.x = fitted.x.map(|x| x.saturating_sub(offset.0));
+    fitted.y = fitted.y.map(|y| y.saturating_sub(offset.1));
+    fitted
 }
 
 pub fn current(window: &WebviewWindow) -> Result<Placement, String> {
@@ -196,7 +208,7 @@ fn apply(window: &WebviewWindow, p: &Placement) -> Result<(), String> {
     window
         .set_min_size(Some(LogicalSize::new(
             MIN_WIDTH,
-            if p.folded { FOLDED_HEIGHT } else { 240.0 },
+            if p.folded { FOLDED_HEIGHT } else { MIN_HEIGHT },
         )))
         .map_err(|e| e.to_string())?;
     window
@@ -242,7 +254,6 @@ pub fn attach(window: &WebviewWindow) -> Result<(), String> {
         })
         .collect();
     let mut p = fit(&stored, &areas);
-    p.is_open = true;
     if crate::platform_capabilities().absolute_window_position {
         if let Some((x, y)) = p.x.zip(p.y) {
             window
@@ -255,6 +266,20 @@ pub fn attach(window: &WebviewWindow) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     window.show().map_err(|e| e.to_string())?;
     apply(window, &p)?;
+    #[cfg(windows)]
+    {
+        // Fit the visible paper after Windows settles its native frame insets.
+        // A flush left/top note can legitimately have an outer origin outside the work area.
+        let offset = crate::snapping::client_offset(window)?;
+        p = fit_with_client_offset(&stored, &areas, offset);
+        if let Some((x, y)) = p.x.zip(p.y) {
+            window
+                .set_position(PhysicalPosition::new(x, y))
+                .map_err(|e| e.to_string())?;
+        }
+        apply(window, &p)?;
+    }
+    p.is_open = true;
     persist(app, &id, &p)?;
     app.state::<Desk>()
         .0
@@ -280,7 +305,7 @@ pub fn attach(window: &WebviewWindow) -> Result<(), String> {
                 WindowEvent::Resized(size) if !p.folded => {
                     let scale = native.scale_factor().map_err(|e| e.to_string())?;
                     let size = size.to_logical::<f64>(scale);
-                    if size.width >= MIN_WIDTH && size.height >= 240.0 {
+                    if size.width >= MIN_WIDTH && size.height >= MIN_HEIGHT {
                         p.width = size.width;
                         p.height = size.height;
                     }
@@ -313,6 +338,7 @@ pub fn attach(window: &WebviewWindow) -> Result<(), String> {
                 .record(format!("Couldn't remember this note's window. {error}"));
         }
     });
+    crate::snapping::attach(window)?;
     Ok(())
 }
 
@@ -346,6 +372,60 @@ pub fn set_folded(window: &WebviewWindow, folded: bool) -> Result<Placement, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn snapped_visible_edges_survive_restoration_with_native_frame_insets() {
+        let area = WorkArea {
+            x: -1920,
+            y: 40,
+            width: 1920,
+            height: 1000,
+            scale: 1.5,
+        };
+        for folded in [false, true] {
+            let p = Placement {
+                x: Some(area.x - 8),
+                y: Some(area.y - 1),
+                folded,
+                ..Default::default()
+            };
+            let restored = fit_with_client_offset(&p, &[area], (8, 1));
+            assert_eq!(restored.x, p.x);
+            assert_eq!(restored.y, p.y);
+            assert_eq!((restored.width, restored.height), (p.width, p.height));
+            let displaced = Placement {
+                x: Some(-4000),
+                y: Some(-2000),
+                ..p
+            };
+            let restored = fit_with_client_offset(&displaced, &[area], (8, 1));
+            assert_eq!(restored.x, Some(area.x - 8));
+            assert_eq!(restored.y, Some(area.y - 1));
+        }
+    }
+
+    #[test]
+    fn restored_right_and_bottom_edges_use_visible_size_and_frame_offset() {
+        let area = WorkArea {
+            x: 40,
+            y: 0,
+            width: 1880,
+            height: 1040,
+            scale: 2.0,
+        };
+        for folded in [false, true] {
+            let p = Placement {
+                x: Some(4000),
+                y: Some(2000),
+                folded,
+                ..Default::default()
+            };
+            let restored = fit_with_client_offset(&p, &[area], (16, 2));
+            assert_eq!(restored.x, Some(1920 - 610 - 16));
+            let height = if folded { 104 } else { 770 };
+            assert_eq!(restored.y, Some(1040 - height - 2));
+        }
+    }
+
     #[test]
     fn standard_note_size_survives_monitor_fitting() {
         let p = fit(
