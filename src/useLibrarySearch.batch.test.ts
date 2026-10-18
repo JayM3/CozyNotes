@@ -15,7 +15,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 
-const summary = (title: string): NoteSummary => ({ id: title, title, preview: title, snippet: [], color: "cream", revision: 1, updatedAt: 0 });
+const summary = (title: string): NoteSummary => ({ favorite: false, id: title, title, preview: title, snippet: [], color: "cream", revision: 1, updatedAt: 0 });
 
 describe("batch library refresh", () => {
   beforeEach(() => {

@@ -6,6 +6,7 @@ export type PaperColor = typeof paperColors[number];
 export type View = "notes" | "trash";
 export type SnippetSegment = { text: string; matched: boolean };
 export type NoteSummary = {
+  favorite: boolean;
   id: string;
   title: string;
   preview: string;
@@ -23,10 +24,20 @@ export type Note = Omit<NoteSummary, "snippet"> & {
 export type NoteDraft = { document: JSONContent; explicitTitle: string };
 export type SavedImageAsset = { assetId: string; mimeType: string };
 export type LibraryFilter = { query: string; color: PaperColor | null };
-export type AppSettings = { runInBackground: boolean; trayAvailable: boolean; warning: string | null };
+export type AppSettings = { runInBackground: boolean; rememberDesk: boolean; trayAvailable: boolean; warning: string | null };
+export type NoteWindowState = { width: number; height: number; x: number | null; y: number | null; folded: boolean; isOpen: boolean };
+export type HistoryEntry = { revision: number; savedAt: number; title: string; preview: string };
+export type HistoryVersion = Omit<HistoryEntry, "preview"> & { document: JSONContent; explicitTitle: string; plainText: string; color: PaperColor };
 export type PlatformCapabilities = { absoluteWindowPosition: boolean; alwaysOnTop: boolean };
 
 export const notesApi = {
+  favorite: (id: string, favorite: boolean) => invoke<void>("set_note_favorite", { id, favorite }),
+  history: (id: string) => invoke<HistoryEntry[]>("list_note_history", { id }),
+  historyVersion: (id: string, revision: number) => invoke<HistoryVersion>("get_note_history", { id, revision }),
+  restoreHistory: (id: string, revision: number) => invoke<Note>("restore_note_history", { id, revision }),
+  getWindowState: () => invoke<NoteWindowState>("get_note_window_state"),
+  setFolded: (folded: boolean) => invoke<NoteWindowState>("set_note_folded", { folded }),
+  setRememberDesk: (enabled: boolean) => invoke<AppSettings>("set_remember_desk", { enabled }),
   list: (trashed: boolean, query: string, color: PaperColor | null) =>
     invoke<NoteSummary[]>("list_notes", { trashed, query, color }),
   get: (id: string) => invoke<Note>("get_note", { id }),

@@ -22,6 +22,11 @@ CozyNotes is a quiet desktop notes app with soft paper colors and a cozy place t
 - **Keep a note visible.** Use **Keep on top** in a note toolbar to keep that note above ordinary windows while you work elsewhere. The setting belongs to the current note window, resets when that window is closed, and is unavailable on Linux Wayland sessions.
 - **Tidy up together.** Select the circles beside notes to move several to Trash. Select all applies to the notes in your current search and paper-color filter.
 - **Keep what matters.** Duplicate a useful note or restore one from Trash before deleting it for good.
+- **Remember your desk.** Reopen notes left open at exit, with their sizes, supported positions, and folded state. Notes closed individually stay closed. Turn automatic reopening off in Settings.
+- **Keep favorites close.** Star notes from the library or a note's More menu. Favorites appear first, and the Favorites only filter works with search and paper colors.
+- **Find an earlier version.** Open More > Note history to preview up to 100 earlier saved versions, including formatting and images. Restore a version as a new note while keeping the current note.
+- **Make a little room.** Fold a note using the footer arrow or More > Fold note. The compact title strip can be moved, unfolded, or closed.
+- **Add pictures.** Paste, drop, or choose local images. CozyNotes keeps its own copy on your device.
 
 ## Settle in
 
@@ -29,7 +34,7 @@ Create a note from the library and start writing. Drag the library by its headin
 
 With Run in background enabled, closing the main window keeps CozyNotes available from its icon beside the Windows clock. Right-click that icon for **Notes**, **Show main menu**, and **Exit CozyNotes**. Exit waits for open drafts to save; if a draft cannot save, it stays open for recovery.
 
-The **Settings** button in the sidebar opens appearance and background preferences in the right pane. Both preferences are remembered. Turn off Run in background to exit normally when the last window closes.
+The **Settings** button in the sidebar opens appearance, background, and Remember my desk preferences in the right pane. These preferences are remembered. Turn off Run in background to exit normally when the last window closes.
 
 Select a note using its circle without opening it. The selection bar shows the count and provides **Select all**, **Clear selection**, and **Move to Trash**. In Trash, **Delete selected** asks for confirmation before permanently deleting the selection. Changing the search, paper-color filter, or page clears the selection.
 
@@ -46,7 +51,7 @@ Use `Ctrl` on Windows/Linux or `Cmd` on macOS:
 
 ## Growing gently
 
-CozyNotes is in early development, currently **0.1.5**. Download the app from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
+CozyNotes is in early development, currently **0.2.0**. Download the app from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
 
 | Platform | Download |
 | --- | --- |
@@ -59,7 +64,7 @@ The Windows executable requires WebView2 Runtime, which the installer can instal
 
 Windows and macOS downloads are not signed with publisher certificates, and macOS builds are not notarized. Windows has received local desktop testing; macOS and Linux still need native interaction testing. Release builds and automated checks run on GitHub Actions for all three platforms. Each release includes `SHA256SUMS.txt` for checking downloaded files.
 
-Image attachments, remembered window arrangements, user-facing backup and restore, and exports are still on the wish list. You can also build the app from source using the steps below.
+User-facing backup and restore and exports are still on the wish list. You can also build the app from source using the steps below.
 
 ## Run it locally
 
@@ -111,13 +116,17 @@ npm run tauri dev
 
 See the [tray, Settings, and selection verification record](docs/2026-10-17-settings-tray-selection-verification.md) for this feature's checks, and the [Everyday Use verification record](docs/everyday-use-verification.md) for earlier desktop checks and search measurements. Automated checks do not replace native interaction or installer testing.
 
-See the [Keep on top research and verification record](docs/2026-10-18-keep-on-top.md) for the native API decision, platform behavior, and Windows runtime checks.
+See the [Keep on top research and verification record](docs/2026-10-18-keep-on-top.md) for the native API decision, platform behavior, and Windows runtime checks. The [desk, favorites, history, and checklist verification record](docs/2026-10-18-desk-favorites-history.md) covers the latest additions.
 
 </details>
 
 ## Your notes live here
 
 Notes are stored in `data/cozynotes.sqlite` inside Tauri's per-user app-local-data directory for `com.cozynotes.app`, separate from the project folder. Existing libraries receive a safety snapshot in a sibling `recovery/` directory before a database migration. These snapshots are separate from the planned user-facing backup feature.
+
+Note history starts with edits saved by this version; it cannot recover edits made before history was available. Each changed title/body save retains the previous version, up to 100 per note. Unchanged saves, favorites, and window actions do not create versions. Permanently deleting a note also deletes its saved history. Restored notes receive independent copies of their images.
+
+Window sizes, placement, and folding are remembered separately from note content. Automatic reopening is enabled by default. On supported desktops, windows are clamped to current monitor work areas when reopened; Wayland lets the compositor place them. Use **Exit CozyNotes** in the tray to save the complete open-note arrangement.
 
 For isolated desktop testing, debug builds accept an absolute local `COZYNOTES_TEST_DATA_DIR`; release builds ignore it. Keep personal notes, databases, and private screenshots out of commits and issue reports.
 

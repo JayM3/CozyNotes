@@ -139,9 +139,37 @@ h1 { margin: 0; color: var(--color-ink); font: 700 var(--text-heading)/1.1 var(-
 .note-editor p { margin: 0 0 1em; }
 .note-editor ul, .note-editor ol { padding-left: 1.35em; }
 .note-editor ul[data-type="taskList"] { padding: 0; list-style: none; }
-.note-editor li[data-type="taskItem"] { display: flex; gap: var(--space-2); }
-.note-editor li[data-type="taskItem"] > label { flex: 0 0 auto; }
-.note-editor li[data-type="taskItem"] > div { min-width: 0; flex: 1; }
+.note-editor ul[data-type="taskList"] > li { display: flex; align-items: flex-start; gap: var(--space-2); }
+.note-editor ul[data-type="taskList"] > li > label { flex: 0 0 auto; display: flex; align-items: center; height: 1.6em; }
+.note-editor ul[data-type="taskList"] > li > label input { margin: 0; accent-color: var(--color-accent); }
+.note-editor ul[data-type="taskList"] > li > div { min-width: 0; flex: 1; }
+
+.favorite-action.active { color: var(--color-accent-text); }
+.favorites-filter { display: inline-flex; align-items: center; align-self: flex-start; gap: var(--space-2); min-height: 34px; margin-bottom: var(--space-3); padding: 0 var(--space-2); border: 1px solid var(--color-rule); border-radius: var(--radius-control); color: var(--color-secondary); background: transparent; }
+.favorites-filter[aria-pressed="true"] { color: var(--color-accent-text); background: var(--color-surface); }
+.fold-tool { margin-right: auto; }
+.note-surface { display: contents; }
+.note-window.is-folded > :not(.folded-strip) { display: none; }
+.folded-strip { display: flex; align-items: center; gap: var(--space-1); flex: 1; min-height: 0; padding: var(--space-2); }
+.folded-title { flex: 1; min-width: 0; padding-inline: var(--space-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
+.history-backdrop { padding: var(--space-2); }
+.history-dialog { display: flex; flex-direction: column; width: min(100%, 560px); max-height: 100%; min-height: 0; padding: var(--space-3); border: 1px solid var(--color-rule); border-radius: var(--radius-card); background: var(--color-paper); box-shadow: 0 12px 36px color-mix(in oklch, var(--color-shadow) 25%, transparent); font-size: var(--text-sm); }
+.history-heading { display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; }
+.history-heading h2 { display: flex; align-items: center; gap: var(--space-2); margin: 0; font: 700 18px/1.3 var(--font-display); }
+.history-dialog > p { margin: var(--space-2) 0; color: var(--color-secondary); line-height: 1.4; }
+.history-dialog .history-error { color: var(--color-danger); }
+.history-list, .history-content { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.history-entry { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; padding: var(--space-3) var(--space-2); border: 0; border-top: 1px solid var(--color-rule); color: var(--color-ink); background: transparent; text-align: left; overflow-wrap: anywhere; }
+.history-entry:hover { background: var(--color-surface); }
+.history-entry > span:first-child { font-weight: 600; }
+.history-entry time, .history-excerpt, .history-date { color: var(--color-secondary); font-size: var(--text-xs); }
+.history-excerpt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.history-preview { padding: var(--space-3); background: var(--paper-color); }
+.history-preview h3 { margin: 0 0 var(--space-3); overflow-wrap: anywhere; }
+.history-preview .note-editor { --reading-size: 16px; min-height: 0; }
+.history-preview input[type="checkbox"] { pointer-events: none; }
+.history-back { display: flex; align-items: center; gap: var(--space-1); align-self: flex-start; min-height: 34px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-small); color: var(--color-accent-text); background: transparent; }
+.history-restore { flex: 0 0 auto; margin-top: var(--space-3); color: var(--color-accent-ink); border-color: var(--color-accent); background: var(--color-accent); }
 .note-image-node { position: relative; display: block; width: 100%; min-height: 32px; margin: 0 0 1em; }
 .note-image-node img { display: block; max-width: 100%; height: auto; margin: 0 auto; cursor: zoom-in; }
 .note-image-node.is-zoomed { min-width: max-content; }

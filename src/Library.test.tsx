@@ -6,6 +6,7 @@ import { ThemeProvider } from "./theme";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
+  favorite: vi.fn(),
   create: vi.fn(),
   open: vi.fn(),
   trash: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("./api", () => ({
   paperColors: ["cream", "butter", "sage", "rose", "lavender", "mist"],
   notesApi: {
     list: mocks.list,
+    favorite: mocks.favorite,
     create: mocks.create,
     open: mocks.open,
     trash: mocks.trash,
@@ -47,13 +49,13 @@ vi.mock("@tauri-apps/api/event", () => ({
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.fn().mockResolvedValue(undefined) }) }));
 vi.mock("./windowDrag", () => ({ startWindowDrag: vi.fn() }));
 
-type Summary = { id: string; title: string; preview: string; color: string; revision: number; updatedAt: number; snippet: never[] };
+type Summary = { favorite: boolean; id: string; title: string; preview: string; color: string; revision: number; updatedAt: number; snippet: never[] };
 let activeNotes: Summary[];
 let trashedNotes: Summary[];
 let settings: { runInBackground: boolean; trayAvailable: boolean; warning: string | null };
 
 function note(title: string, color: string = "sage"): Summary {
-  return { id: title.toLowerCase().replace(/ /g, "-"), title, preview: `${title} preview`, color, revision: 1, updatedAt: 0, snippet: [] };
+  return { favorite: false, id: title.toLowerCase().replace(/ /g, "-"), title, preview: `${title} preview`, color, revision: 1, updatedAt: 0, snippet: [] };
 }
 
 function renderLibrary() {
@@ -77,6 +79,7 @@ describe("library settings and selection", () => {
       return source.filter(item => (!normalized || `${item.title} ${item.preview}`.toLocaleLowerCase().includes(normalized)) && (!color || item.color === color));
     });
     mocks.create.mockReset().mockResolvedValue(undefined);
+    mocks.favorite.mockReset().mockImplementation(async (id: string, favorite: boolean) => { activeNotes = activeNotes.map(note => note.id === id ? { ...note, favorite } : note); });
     mocks.open.mockReset().mockResolvedValue(undefined);
     mocks.trash.mockReset().mockResolvedValue(undefined);
     mocks.restore.mockReset().mockResolvedValue(undefined);
@@ -136,8 +139,28 @@ describe("library settings and selection", () => {
     const checkbox = await select("Alpha");
     expect((checkbox as HTMLInputElement).checked).toBe(true);
     expect(mocks.open).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Alpha/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Alpha/ }));
     await waitFor(() => expect(mocks.open).toHaveBeenCalledWith("alpha"));
+  });
+
+  it("stars a note without opening it and limits bulk selection to filtered favorites", async () => {
+    renderLibrary();
+    fireEvent.click(await screen.findByRole("button", { name: "Add Alpha to favorites" }));
+    await screen.findByRole("button", { name: "Remove Alpha from favorites" });
+    expect(mocks.open).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Favorites only" }));
+    expect(screen.queryByRole("checkbox", { name: "Select Gamma" })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select all visible notes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+    await waitFor(() => expect(mocks.trashMany).toHaveBeenCalledWith(["alpha"]));
+  });
+
+  it("keeps the favorite state on a failed mutation", async () => {
+    mocks.favorite.mockRejectedValueOnce(new Error("Disk full"));
+    renderLibrary();
+    fireEvent.click(await screen.findByRole("button", { name: "Add Alpha to favorites" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: "Add Alpha to favorites" }).getAttribute("aria-pressed")).toBe("false");
   });
 
   it("selects only the currently filtered results with the partial-state select-all control", async () => {

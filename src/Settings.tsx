@@ -52,6 +52,15 @@ export function Settings() {
     }
   };
 
+  const updateDesk = async (enabled: boolean) => {
+    if (!settings || saving) return;
+    setSaving(true);
+    setSaveError("");
+    try { setSettings(await notesApi.setRememberDesk(enabled)); }
+    catch (reason) { setSaveError(`Couldn't save the desk setting. ${errorText(reason)}`); }
+    finally { setSaving(false); }
+  };
+
   return <div className="settings-page">
     <section className="settings-section" aria-labelledby="settings-appearance-title">
       <h2 id="settings-appearance-title">Appearance</h2>
@@ -62,6 +71,13 @@ export function Settings() {
       {loading && <p className="settings-state" role="status">Loading settings...</p>}
       {!loading && loadError && <div className="settings-error" role="alert"><p>{loadError}</p><button className="text-action" onClick={() => void loadSettings()}>Retry</button></div>}
       {!loading && settings && <>
+        <div className="background-setting">
+          <div className="background-copy">
+            <label htmlFor={`${descriptionId}-desk`}>Remember my desk</label>
+            <p id={`${descriptionId}-desk-description`}>Reopen notes left open when you exit, with their sizes, positions, and folded state. Notes you close individually stay closed.</p>
+          </div>
+          <input id={`${descriptionId}-desk`} className="background-switch" type="checkbox" role="switch" aria-label="Remember my desk" aria-describedby={`${descriptionId}-desk-description`} checked={settings.rememberDesk ?? true} onChange={event => void updateDesk(event.target.checked)} disabled={saving} />
+        </div>
         <div className="background-setting">
           <div className="background-copy">
             <label htmlFor={`${descriptionId}-switch`}>Run in background</label>

@@ -4,11 +4,12 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{fs, path::Path};
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Note {
+    pub favorite: bool,
     pub id: String,
     pub document: Option<Value>,
     pub plain_text: String,
@@ -25,6 +26,7 @@ pub struct Note {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteSummary {
+    pub favorite: bool,
     pub id: String,
     pub title: String,
     pub preview: String,
@@ -149,8 +151,30 @@ fn migrate(connection: &mut Connection, path: &Path, version: i64) -> Result<(),
     }
     // Existing titles are derived metadata. Keep them and every body unchanged;
     // a new, empty field records only titles explicitly entered by the user.
+    if version < 2 {
+        transaction
+            .execute_batch("ALTER TABLE notes ADD COLUMN explicit_title TEXT NOT NULL DEFAULT '';")
+            .map_err(|error| error.to_string())?;
+    }
     transaction
-        .execute_batch("ALTER TABLE notes ADD COLUMN explicit_title TEXT NOT NULL DEFAULT '';")
+        .execute_batch(
+            "
+        ALTER TABLE notes ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;
+        CREATE TABLE note_history (
+            note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            revision INTEGER NOT NULL, document_json TEXT NOT NULL,
+            explicit_title TEXT NOT NULL, title TEXT NOT NULL, plain_text TEXT NOT NULL,
+            color TEXT NOT NULL, saved_at INTEGER NOT NULL,
+            PRIMARY KEY(note_id, revision)
+        );
+        CREATE TABLE note_windows (
+            note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+            width REAL NOT NULL DEFAULT 360, height REAL NOT NULL DEFAULT 400,
+            x INTEGER, y INTEGER, folded INTEGER NOT NULL DEFAULT 0,
+            is_open INTEGER NOT NULL DEFAULT 0
+        );
+    ",
+        )
         .map_err(|error| error.to_string())?;
     transaction
         .execute_batch("CREATE INDEX IF NOT EXISTS notes_recent ON notes(updated_at DESC, id);")
@@ -162,13 +186,13 @@ fn migrate(connection: &mut Connection, path: &Path, version: i64) -> Result<(),
 }
 
 pub fn load_note(connection: &Connection, id: &str, include_trashed: bool) -> Result<Note, String> {
-    connection.query_row("SELECT id, document_json, plain_text, title, preview, color, revision, updated_at, explicit_title FROM notes WHERE id=?1 AND (?2 OR trashed_at IS NULL)", params![id, include_trashed], |row| {
+    connection.query_row("SELECT id, document_json, plain_text, title, preview, color, revision, updated_at, explicit_title, favorite FROM notes WHERE id=?1 AND (?2 OR trashed_at IS NULL)", params![id, include_trashed], |row| {
         let raw: String = row.get(1)?;
         let (document, document_error) = match parsed_document(&raw) {
             Ok(document) => (Some(document), None),
             Err(error) => (None, Some(error)),
         };
-        Ok(Note { id: row.get(0)?, document, plain_text: row.get(2)?, title: row.get(3)?, preview: row.get(4)?, color: row.get(5)?, revision: row.get(6)?, updated_at: row.get(7)?, explicit_title: row.get(8)?, document_error })
+        Ok(Note { id: row.get(0)?, document, plain_text: row.get(2)?, title: row.get(3)?, preview: row.get(4)?, color: row.get(5)?, revision: row.get(6)?, updated_at: row.get(7)?, explicit_title: row.get(8)?, favorite: row.get(9)?, document_error })
     }).optional().map_err(|error| error.to_string())?.ok_or_else(|| "Note not found".into())
 }
 
@@ -182,7 +206,7 @@ pub fn list_notes(
         return Err("Invalid paper color".into());
     }
     let needle = document::search_key(query.trim());
-    let mut statement = connection.prepare("SELECT id, title, preview, color, revision, updated_at, CASE WHEN ?2='' THEN '' ELSE plain_text END, CASE WHEN ?2='' THEN '' ELSE explicit_title END FROM notes WHERE (trashed_at IS NOT NULL)=?1 AND (?2='' OR instr(search_text, ?2)>0) AND (?3 IS NULL OR color=?3) ORDER BY updated_at DESC, id").map_err(|error| error.to_string())?;
+    let mut statement = connection.prepare("SELECT id, title, preview, color, revision, updated_at, CASE WHEN ?2='' THEN '' ELSE plain_text END, CASE WHEN ?2='' THEN '' ELSE explicit_title END, favorite FROM notes WHERE (trashed_at IS NOT NULL)=?1 AND (?2='' OR instr(search_text, ?2)>0) AND (?3 IS NULL OR color=?3) ORDER BY favorite DESC, updated_at DESC, id").map_err(|error| error.to_string())?;
     statement
         .query_map(params![trashed, needle, color], |row| {
             let preview: String = row.get(2)?;
@@ -197,6 +221,7 @@ pub fn list_notes(
             };
             let snippet = document::snippet(snippet_text, &needle);
             Ok(NoteSummary {
+                favorite: row.get(8)?,
                 id: row.get(0)?,
                 title: row.get(1)?,
                 preview,
@@ -381,6 +406,13 @@ pub fn save_document(
     // Omitting the additive IPC field preserves a title saved by a newer caller.
     let explicit_title = explicit_title.unwrap_or(&original.explicit_title);
     validate_title(explicit_title)?;
+    if original.revision != expected_revision {
+        return Err("Stale revision or note is in Trash".into());
+    }
+    if original.document.as_ref() == Some(document) && original.explicit_title == explicit_title {
+        return Ok(original);
+    }
+    crate::history::record(&transaction, &original)?;
     let (title, preview, search_text) = note_metadata(explicit_title, &text);
     let updated = transaction.execute("UPDATE notes SET document_json=?1, plain_text=?2, search_text=?3, title=?4, preview=?5, document_error=NULL, updated_at=?6, revision=revision+1, explicit_title=?9 WHERE id=?7 AND revision=?8 AND trashed_at IS NULL", params![document.to_string(), text, search_text, title, preview, timestamp, id, expected_revision, explicit_title]).map_err(|error| error.to_string())?;
     if updated == 0 {

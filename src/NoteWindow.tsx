@@ -11,7 +11,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
-import { AArrowDown, AArrowUp, ArrowDown, ArrowUp, Bold, Check, CheckSquare, Copy, ImagePlus, Italic, List, MoreHorizontal, Plus, RotateCcw, Search, Trash2, Underline as UnderlineIcon, X } from "lucide-react";
+import { AArrowDown, AArrowUp, ArrowDown, ArrowUp, Bold, Check, CheckSquare, ChevronDown, ChevronUp, Copy, History, ImagePlus, Italic, List, MoreHorizontal, Plus, RotateCcw, Search, Star, Trash2, Underline as UnderlineIcon, X } from "lucide-react";
 import { notesApi, paperColors } from "./api";
 import type { Note, NoteDraft, PaperColor } from "./api";
 import { SaveCoordinator } from "./saveCoordinator";
@@ -26,6 +26,7 @@ import type { EditorOperation, EditorOperationFinish } from "./editorOperation";
 import { KeepOnTopButton, useKeepOnTop } from "./KeepOnTop";
 import { CozyImage } from "./ImageNode";
 import { imageFiles, imageType, MAX_IMAGE_BYTES } from "./imageImport";
+import { NoteHistory } from "./NoteHistory";
 
 const readingSizes = [12, 14, 16, 18, 20, 24];
 export function NoteWindow({ id }: { id: string }) {
@@ -43,6 +44,10 @@ export function NoteWindow({ id }: { id: string }) {
   const [closeReady, setCloseReady] = useState(false);
   const [fontSize, setFontSize] = useState(16);
   const [findOpen, setFindOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [folded, setFolded] = useState(false);
+  const [foldReady, setFoldReady] = useState(false);
+  const unfoldButton = useRef<HTMLButtonElement>(null);
   const [findQuery, setQuery] = useState("");
   const findInput = useRef<HTMLInputElement>(null);
   const bookmark = useRef<SelectionBookmark | null>(null);
@@ -56,6 +61,17 @@ export function NoteWindow({ id }: { id: string }) {
   const nativeOperation = useRef<EditorOperationCoordinator | null>(null);
   const initialFocus = useRef(false);
   const keepOnTop = useKeepOnTop(nativeWindow);
+
+  useEffect(() => {
+    let cancelled = false;
+    void notesApi.getWindowState().then(value => { if (!cancelled) { setFolded(value.folded); setFoldReady(true); } })
+      .catch(() => { if (!cancelled) setError("Couldn't load the window arrangement. Reopen this note to retry."); });
+    let dispose: (() => void) | undefined;
+    void listen<{ id: string; favorite: boolean }>("note-favorite-changed", event => {
+      if (event.payload.id === id) setNote(current => current ? { ...current, favorite: event.payload.favorite } : current);
+    }).then(value => { if (cancelled) value(); else dispose = value; }).catch(() => undefined);
+    return () => { cancelled = true; dispose?.(); };
+  }, [id]);
 
   const importImages = useCallback(async (files: File[]) => {
     const current = editorRef.current;
@@ -153,7 +169,7 @@ export function NoteWindow({ id }: { id: string }) {
       coordinator.current = new SaveCoordinator({
         revision: value.revision,
         save: (draft, revision) => notesApi.save(id, revision, draft),
-        onSaved: saved => setNote(current => current ? { ...saved, color: current.color } : saved),
+        onSaved: saved => setNote(current => current ? { ...saved, color: current.color, favorite: current.favorite } : saved),
         onStatus: status => {
           setSaveStatus(status);
           setError(status === "error" ? "Couldn't save. Your draft is still open." : "");
@@ -262,6 +278,17 @@ export function NoteWindow({ id }: { id: string }) {
   closeRef.current = () => { void close(); };
   const trash = () => savedAction(async () => { await notesApi.trash(id); allowClose.current = true; await nativeWindow.close(); }, "Couldn't save or move this note to Trash.", "trash");
   const duplicate = () => savedAction(() => notesApi.duplicate(id), "Couldn't save or duplicate this note.", "duplicate");
+  const toggleFold = () => savedAction(async () => {
+    const value = await notesApi.setFolded(!folded);
+    setFolded(value.folded);
+    requestAnimationFrame(() => { if (value.folded) unfoldButton.current?.focus(); else editorRef.current?.commands.focus(); });
+  }, "Couldn't fold or unfold this note. Your draft is still here.", "fold");
+  const openHistory = () => savedAction(async () => { setHistoryOpen(true); }, "Couldn't save before opening history. Please retry.", "history");
+  const changeFavorite = () => windowAction(async () => {
+    const favorite = !note?.favorite;
+    await notesApi.favorite(id, favorite);
+    setNote(current => current ? { ...current, favorite } : current);
+  }, "Couldn't update favorites.");
   const retry = async () => {
     if (loadError) { setLoadAttempt(value => value + 1); return; }
     if (nativeOperation.current && !await nativeOperation.current.retryFinish()) return;
@@ -321,11 +348,12 @@ export function NoteWindow({ id }: { id: string }) {
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (event.isComposing || event.keyCode === 229) return;
+      if (historyOpen) return;
       const primary = (event.metaKey || event.ctrlKey) && !event.altKey;
       if (primary && event.key.toLowerCase() === "f") {
         event.preventDefault();
         if (event.shiftKey) void windowAction(() => notesApi.showLibrary(true), "Couldn't open library search.");
-        else openFind();
+        else if (!folded) openFind();
       }
       if (primary && event.key.toLowerCase() === "w") { event.preventDefault(); void close(); }
       if (primary && event.key.toLowerCase() === "n") { event.preventDefault(); void windowAction(notesApi.create, "Couldn't create a note."); }
@@ -338,7 +366,7 @@ export function NoteWindow({ id }: { id: string }) {
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [close, openFind, dismissFind, findOpen, windowAction]);
+  }, [close, openFind, dismissFind, findOpen, windowAction, historyOpen, folded]);
 
   const activeIndex = state?.find.activeIndex ?? -1;
   const matchCount = state?.find.matches.length ?? 0;
@@ -347,7 +375,13 @@ export function NoteWindow({ id }: { id: string }) {
   }, [editor, findOpen, activeIndex, matchCount, findQuery]);
 
   const ready = Boolean(note) && !loadError && closeReady;
-  return <main className={`note-window paper-${note?.color ?? "cream"}`} style={{ "--reading-size": `${fontSize}px` } as CSSProperties}>
+  return <main className={`note-window paper-${note?.color ?? "cream"}${folded ? " is-folded" : ""}`} style={{ "--reading-size": `${fontSize}px` } as CSSProperties}>
+    {folded && <header className="folded-strip" data-tauri-drag-region onMouseDown={startWindowDrag}>
+      <span className="folded-title" data-tauri-drag-region title={error || title || note?.title}>{error || title || note?.title || "Untitled note"}</span>
+      <button ref={unfoldButton} className="tool" aria-label="Unfold note" title="Unfold note" disabled={locked || !foldReady} onClick={() => void toggleFold()}><ChevronDown size={18} /></button>
+      <button className="tool close-tool" aria-label="Close folded note" title="Close note" onClick={() => void close()}><X size={17} /></button>
+    </header>}
+    <div className="note-surface" inert={historyOpen}>
     <header className="note-toolbar" data-tauri-drag-region onMouseDown={startWindowDrag}>
       <div className="toolbar-group" role="group" aria-label="Text formatting" data-tauri-drag-region>
         <button className="tool" disabled={!ready || locked} aria-label="Insert image" title="Insert image" onMouseDown={event => event.preventDefault()} onClick={chooseImage}><ImagePlus size={16} /></button>
@@ -363,6 +397,9 @@ export function NoteWindow({ id }: { id: string }) {
           {paperColors.map(color => <button key={color} role="menuitemradio" aria-checked={note?.color === color} onClick={() => void changeColor(color)}><span className={`menu-swatch paper-${color}`} />{color[0].toUpperCase() + color.slice(1)}{note?.color === color && <Check size={15} className="menu-check" />}</button>)}
         </Popover>
         <Popover label="More note actions" icon={<MoreHorizontal size={17} />}>
+          <button role="menuitemcheckbox" aria-checked={Boolean(note?.favorite)} disabled={!ready || locked} onClick={() => void changeFavorite()}><Star size={15} fill={note?.favorite ? "currentColor" : "none"} />{note?.favorite ? "Remove from favorites" : "Add to favorites"}</button>
+          <button role="menuitem" disabled={!ready || locked} onClick={() => void openHistory()}><History size={15} /> Note history</button>
+          <button role="menuitem" disabled={!ready || locked || !foldReady} onClick={() => void toggleFold()}><ChevronUp size={15} /> Fold note</button>
           <button role="menuitem" disabled={!ready || locked} onClick={openFind}><Search size={15} /> Find in note</button>
           <button role="menuitem" data-editor-action disabled={!ready || locked || !state?.completed} onClick={() => command(resetCompletedTasks)}><RotateCcw size={15} /> Reset completed items</button>
           <button role="menuitem" disabled={!ready || locked} onClick={() => void duplicate()}><Copy size={15} /> Duplicate</button>
@@ -396,6 +433,10 @@ export function NoteWindow({ id }: { id: string }) {
       {error && <div className="save-error" role="alert">{error}<div className="error-actions"><button onClick={() => void retry()}>Retry</button><button onClick={() => void copyDraft()}>{loadError ? "Copy available text" : "Copy draft"}</button></div></div>}
       {loadError && note?.plainText ? <pre className="recovery-text">{note.plainText}</pre> : <EditorContent editor={editor} />}
     </section>
-    <footer className="note-footer" data-tauri-drag-region onMouseDown={startWindowDrag}><span className="visually-hidden" role="status" aria-live="polite">{saveStatus === "loading" ? "Loading note" : saveStatus === "saving" ? "Saving note" : saveStatus === "error" ? "Couldn't save note" : "Note saved"}</span><div className="reading-controls"><button aria-label="Decrease text size" title="Decrease text size" disabled={fontSize === 12} onClick={() => changeReadingSize(-1)}><AArrowDown size={16} /></button><button aria-label="Increase text size" title="Increase text size" disabled={fontSize === 24} onClick={() => changeReadingSize(1)}><AArrowUp size={16} /></button></div></footer>
+    <footer className="note-footer" data-tauri-drag-region onMouseDown={startWindowDrag}><span className="visually-hidden" role="status" aria-live="polite">{saveStatus === "loading" ? "Loading note" : saveStatus === "saving" ? "Saving note" : saveStatus === "error" ? "Couldn't save note" : "Note saved"}</span><button className="tool fold-tool" aria-label="Fold note" title="Fold note" disabled={!ready || locked || !foldReady} onClick={() => void toggleFold()}><ChevronUp size={16} /></button><div className="reading-controls"><button aria-label="Decrease text size" title="Decrease text size" disabled={fontSize === 12} onClick={() => changeReadingSize(-1)}><AArrowDown size={16} /></button><button aria-label="Increase text size" title="Increase text size" disabled={fontSize === 24} onClick={() => changeReadingSize(1)}><AArrowUp size={16} /></button></div></footer>
+    </div>
+    {historyOpen && <NoteHistory id={id} onClose={() => setHistoryOpen(false)} onRestore={async revision => {
+      if (!await savedAction(() => notesApi.restoreHistory(id, revision), "Couldn't restore this version.", "restore-history")) throw new Error("Restore failed");
+    }} />}
   </main>;
 }

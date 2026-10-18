@@ -1,6 +1,8 @@
 mod assets;
+mod desk;
 mod desktop;
 mod document;
+mod history;
 mod operations;
 mod settings;
 mod storage;
@@ -93,11 +95,18 @@ fn open_note_window(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
         .title("CozyNotes")
         .decorations(false)
         .resizable(true)
+        .visible(false)
         .inner_size(360.0, 400.0)
         .min_inner_size(320.0, 240.0)
         .build()
-        .map(|_| ())
-        .map_err(|error| error.to_string());
+        .map_err(|error| error.to_string())
+        .and_then(|window| {
+            if let Err(error) = desk::attach(&window).and_then(|_| show_window(&window)) {
+                let _ = window.destroy();
+                return Err(error);
+            }
+            Ok(())
+        });
     coordinator
         .0
         .lock()
@@ -124,6 +133,121 @@ fn get_note(state: tauri::State<'_, Database>, id: String) -> Result<Note, Strin
 }
 
 #[tauri::command]
+fn set_note_favorite(app: tauri::AppHandle, id: String, favorite: bool) -> Result<(), String> {
+    let windows = app.state::<WindowCoordinator>();
+    let _guard = windows.0.lock().map_err(|e| e.to_string())?;
+    ensure_idle(&app)?;
+    let db = app.state::<Database>();
+    let connection = db.0.lock().map_err(|e| e.to_string())?;
+    if connection
+        .execute(
+            "UPDATE notes SET favorite=?1 WHERE id=?2 AND trashed_at IS NULL",
+            params![favorite, id],
+        )
+        .map_err(|e| e.to_string())?
+        == 0
+    {
+        return Err("Note not found".into());
+    }
+    drop(connection);
+    let _ = app.emit(
+        "note-favorite-changed",
+        serde_json::json!({"id":id,"favorite":favorite}),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+fn list_note_history(
+    state: tauri::State<'_, Database>,
+    id: String,
+) -> Result<Vec<history::HistoryEntry>, String> {
+    history::list(&*state.0.lock().map_err(|e| e.to_string())?, &id)
+}
+
+#[tauri::command]
+fn get_note_history(
+    state: tauri::State<'_, Database>,
+    id: String,
+    revision: i64,
+) -> Result<history::HistoryVersion, String> {
+    history::get(&*state.0.lock().map_err(|e| e.to_string())?, &id, revision)
+}
+
+#[tauri::command]
+async fn restore_note_history(
+    app: tauri::AppHandle,
+    id: String,
+    revision: i64,
+) -> Result<Note, String> {
+    let windows = app.state::<WindowCoordinator>();
+    let guard = windows.0.lock().map_err(|e| e.to_string())?;
+    ensure_idle(&app)?;
+    let db = app.state::<Database>();
+    let connection = db.0.lock().map_err(|e| e.to_string())?;
+    let mut version = history::get(&connection, &id, revision)?;
+    let copied = assets::clone_document_assets(&app, &mut version.document)?;
+    let copy_id = uuid::Uuid::new_v4().to_string();
+    let title = format!("{} (restored)", version.title);
+    let note = match storage::insert_note(
+        &connection,
+        &copy_id,
+        &version.document,
+        &version.color,
+        now(),
+        &title,
+    ) {
+        Ok(note) => note,
+        Err(error) => {
+            for asset in copied {
+                assets::remove(&app, &asset);
+            }
+            return Err(error);
+        }
+    };
+    drop(connection);
+    drop(guard);
+    let _ = app.emit("note-created", &copy_id);
+    desktop::refresh(&app);
+    // A window failure must not make a successful restore look like a failed save.
+    if let Err(error) = open_note_window(&app, &copy_id) {
+        app.state::<DesktopState>().errors.record(format!(
+            "Restored note saved to your library, but its window couldn't open. {error}"
+        ));
+    }
+    Ok(note)
+}
+
+#[tauri::command]
+fn get_note_window_state(window: tauri::WebviewWindow) -> Result<desk::Placement, String> {
+    desk::current(&window)
+}
+
+#[tauri::command]
+fn set_note_folded(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    folded: bool,
+) -> Result<desk::Placement, String> {
+    ensure_idle(&app)?;
+    desk::set_folded(&window, folded)
+}
+
+#[tauri::command]
+fn set_remember_desk(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    enabled: bool,
+) -> Result<SettingsResponse, String> {
+    require_library(&window)?;
+    ensure_idle(&app)?;
+    let state = app.state::<DesktopState>();
+    let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
+    settings.set_remember_desk(enabled)?;
+    Ok(settings.response())
+}
+
+#[tauri::command]
 fn save_image_asset(
     app: tauri::AppHandle,
     mime_type: String,
@@ -143,6 +267,12 @@ fn delete_image_asset(app: tauri::AppHandle, asset_id: String) -> Result<(), Str
     ensure_idle(&app)?;
     if !assets::is_valid_asset_id(&asset_id) {
         return Err("Invalid image asset".into());
+    }
+    let db = app.state::<Database>();
+    let connection = db.0.lock().map_err(|e| e.to_string())?;
+    let used: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM notes WHERE instr(document_json,?1)>0 UNION ALL SELECT 1 FROM note_history WHERE instr(document_json,?1)>0)", [&asset_id], |r|r.get(0)).map_err(|e|e.to_string())?;
+    if used {
+        return Err("This image is still used by a note or its history".into());
     }
     assets::remove(&app, &asset_id);
     Ok(())
@@ -648,6 +778,10 @@ async fn exit_safely(app: &tauri::AppHandle) -> Result<(), String> {
             "Couldn't exit CozyNotes. {error}. Your drafts remain open."
         ));
     }
+    if let Err(error) = desk::flush(app) {
+        finish_preparation(app, &preparation, "cancelled");
+        return Err(format!("Couldn't remember your desk. {error}"));
+    }
     // Prevent new mutations until the process exits, with all prepared drafts locked.
     app.state::<DesktopState>()
         .exit_approved
@@ -689,6 +823,7 @@ pub fn run() {
             let path = database_path(&app.handle())?;
             let connection = storage::open_database(&path)?;
             app.manage(Database(Mutex::new(connection)));
+            app.manage(desk::Desk::default());
             let settings_path = path.parent().and_then(|data| data.parent()).ok_or("Application data directory is unavailable")?.join("settings.json");
             app.manage(WindowCoordinator(Mutex::new(HashSet::new())));
             app.manage(DesktopState {
@@ -717,6 +852,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_notes,
             get_note,
+            set_note_favorite,
+            list_note_history,
+            get_note_history,
+            restore_note_history,
+            get_note_window_state,
+            set_note_folded,
+            set_remember_desk,
             save_image_asset,
             read_image_asset,
             delete_image_asset,
@@ -742,12 +884,24 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building CozyNotes")
         .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Ready) {
+                let app=app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let result = (|| -> Result<(),String> {
+                        if !app.state::<DesktopState>().settings.lock().map_err(|e|e.to_string())?.response().remember_desk { return Ok(()); }
+                        let ids=desk::open_ids(&*app.state::<Database>().0.lock().map_err(|e|e.to_string())?)?;
+                        for id in ids { if let Err(error)=open_note_window(&app,&id) { app.state::<DesktopState>().errors.record(format!("Couldn't reopen a note. {error}")); } }
+                        Ok(())
+                    })();
+                    if let Err(error)=result { desktop::report_error(&app,error).await; }
+                });
+            }
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 let state = app.state::<DesktopState>();
                 if state.exit_approved.load(Ordering::SeqCst) { return; }
-                if state.operations.busy() || desktop::background_enabled(app) || code.is_some() {
-                    api.prevent_exit();
-                    if !state.operations.busy() && code.is_some() { desktop::request_exit(app); }
+                api.prevent_exit();
+                if !state.operations.busy() && (!desktop::background_enabled(app) || code.is_some()) {
+                    desktop::request_exit(app);
                 }
             }
         });

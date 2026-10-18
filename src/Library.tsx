@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArchiveRestore, ArrowRight, Check, Plus, Search, Settings as SettingsIcon, StickyNote, Trash2, X } from "lucide-react";
+import { ArchiveRestore, ArrowRight, Check, Plus, Search, Settings as SettingsIcon, Star, StickyNote, Trash2, X } from "lucide-react";
 import { notesApi, paperColors } from "./api";
 import { version } from "../package.json";
 import type { LibraryFilter, View } from "./api";
@@ -43,7 +43,9 @@ export function Library() {
   const pendingSearchFocus = useRef(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const filter = filters[view];
-  const { notes, error, loading, refresh } = useLibrarySearch(view, filter.query, filter.color);
+  const { notes: results, error, loading, refresh } = useLibrarySearch(view, filter.query, filter.color);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const notes = favoritesOnly && view === "notes" ? results.filter(note => note.favorite) : results;
   const search = useRef<HTMLInputElement>(null);
   const controlsLocked = busy || confirmation !== null;
   const selectionLocked = busy || loading || confirmation !== null;
@@ -345,6 +347,7 @@ export function Library() {
           <button className="all-colors" aria-pressed={filter.color === null} onClick={() => updateFilter({ color: null })} disabled={controlsLocked}>All colors</button>
           {paperColors.map(color => <button key={color} className={`filter-swatch paper-${color}`} aria-label={`${color[0].toUpperCase()}${color.slice(1)} paper`} title={`${color[0].toUpperCase()}${color.slice(1)} paper`} aria-pressed={filter.color === color} onClick={() => updateFilter({ color })} disabled={controlsLocked}><span className="swatch-face">{filter.color === color && <Check size={14} />}</span></button>)}
         </div>
+        {view === "notes" && <button className="favorites-filter" aria-pressed={favoritesOnly} disabled={controlsLocked} onClick={() => { setFavoritesOnly(value => !value); setSelectedIds(new Set()); }}><Star size={15} fill={favoritesOnly ? "currentColor" : "none"} /> Favorites only</button>}
         <div className="list-heading"><span aria-live="polite">{loading ? "Searching..." : `${notes.length} ${notes.length === 1 ? "note" : "notes"}`}</span><span>Recently edited</span></div>
         {notes.length > 0 && <div className="selection-toolbar" aria-label="Note selection actions">
           <span className="selection-count" role={selectedCount ? "status" : undefined}>{selectedCount ? `${selectedCount} selected` : "Select notes"}</span>
@@ -360,13 +363,14 @@ export function Library() {
               <span className="note-title">{note.title}</span><span className="note-preview">{note.snippet.length ? note.snippet.map((segment, index) => segment.matched ? <mark key={index}>{segment.text}</mark> : <span key={index}>{segment.text}</span>) : note.preview || "No text yet"}</span>
               <time dateTime={new Date(note.updatedAt).toISOString()}>{new Date(note.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</time>
             </button>
+            {view === "notes" && <button className={`row-action favorite-action${note.favorite ? " active" : ""}`} aria-label={`${note.favorite ? "Remove" : "Add"} ${note.title} ${note.favorite ? "from" : "to"} favorites`} title={note.favorite ? "Remove from favorites" : "Add to favorites"} aria-pressed={Boolean(note.favorite)} disabled={controlsLocked || loading} onClick={() => void actOnNote(() => notesApi.favorite(note.id, !note.favorite), "Couldn't update favorites.")}><Star size={17} fill={note.favorite ? "currentColor" : "none"} /></button>}
             {view === "trash" && <><button className="row-action" onClick={() => void actOnNote(() => notesApi.restore(note.id), "Couldn't restore this note.")} aria-label={`Restore ${note.title}`} title="Restore note" disabled={controlsLocked || loading}><ArchiveRestore size={17} /></button><button className="row-action" onClick={() => purge(note.id)} aria-label={`Permanently delete ${note.title}`} title="Permanently delete" disabled={controlsLocked || loading}><Trash2 size={16} /></button></>}
             <span className={`selection-control paper-${note.color}`}>
               <input className="selection-checkbox" type="checkbox" aria-label={`Select ${note.title}`} checked={selectedIds.has(note.id)} onChange={() => toggleSelected(note.id)} disabled={selectionLocked} />
               <span className="selection-mark" aria-hidden="true"><Check size={14} /></span>
             </span>
           </article>)}
-          {!notes.length && !loading && <div className="empty-state">{!filter.query && !filter.color && view === "notes" ? <img className="empty-notebook" src="/cozynotes-icon.png" alt="" draggable={false} /> : <StickyNote size={28} aria-hidden="true" />}<h2>{filter.query || filter.color ? "No notes match your search" : view === "notes" ? "No notes yet" : "Trash is empty"}</h2>{!filter.query && !filter.color && view === "notes" && <button className="text-action" onClick={() => void create()} disabled={controlsLocked}>Create a note <ArrowRight size={14} /></button>}</div>}
+          {!notes.length && !loading && <div className="empty-state">{!filter.query && !filter.color && view === "notes" ? <img className="empty-notebook" src="/cozynotes-icon.png" alt="" draggable={false} /> : <StickyNote size={28} aria-hidden="true" />}<h2>{filter.query || filter.color ? "No notes match your search" : favoritesOnly && view === "notes" ? "No favorites yet" : view === "notes" ? "No notes yet" : "Trash is empty"}</h2>{favoritesOnly && view === "notes" ? <p>Star a note to keep it within reach.</p> : !filter.query && !filter.color && view === "notes" && <button className="text-action" onClick={() => void create()} disabled={controlsLocked}>Create a note <ArrowRight size={14} /></button>}</div>}
         </div>
       </>}
     </section>

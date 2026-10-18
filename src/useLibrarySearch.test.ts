@@ -14,7 +14,7 @@ function deferred<T>() {
   const promise = new Promise<T>(yes => { resolve = yes; });
   return { promise, resolve };
 }
-const summary = (title: string): NoteSummary => ({ id: title, title, preview: title, snippet: [], color: "cream", revision: 1, updatedAt: 0 });
+const summary = (title: string): NoteSummary => ({ favorite: false, id: title, title, preview: title, snippet: [], color: "cream", revision: 1, updatedAt: 0 });
 
 describe("library search requests", () => {
   beforeEach(() => {
@@ -38,7 +38,7 @@ describe("library search requests", () => {
     await act(async () => { newest.resolve([summary("new")]); });
     await act(async () => { old.resolve([summary("old")]); });
     expect(result.current.notes[0].title).toBe("new");
-    expect(vi.mocked(listen)).toHaveBeenCalledTimes(7);
+    expect(vi.mocked(listen)).toHaveBeenCalledWith("note-favorite-changed", expect.any(Function));
   });
 
   it("invalidates an old view immediately and passes the color filter", async () => {

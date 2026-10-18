@@ -31,6 +31,210 @@ fn doc(text: &str) -> Value {
     }
 }
 
+#[test]
+fn schema_two_upgrade_preserves_notes_and_creates_a_verified_snapshot() {
+    let root = TestRoot::new();
+    let connection = open_database(&root.database()).unwrap();
+    insert_note(
+        &connection,
+        "existing",
+        &doc("Keep this body"),
+        "sage",
+        22,
+        "My title",
+    )
+    .unwrap();
+    connection.execute_batch("DROP TABLE note_history; DROP TABLE note_windows; ALTER TABLE notes DROP COLUMN favorite; PRAGMA user_version=2;").unwrap();
+    drop(connection);
+    let connection = open_database(&root.database()).unwrap();
+    let note = load_note(&connection, "existing", false).unwrap();
+    assert_eq!(note.explicit_title, "My title");
+    assert_eq!(note.document, Some(doc("Keep this body")));
+    assert_eq!(
+        (note.revision, note.updated_at, note.favorite),
+        (0, 22, false)
+    );
+    assert!(
+        crate::history::list(&connection, "existing")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(fs::read_dir(root.0.join("recovery")).unwrap().count(), 1);
+    drop(connection);
+    open_database(&root.database()).unwrap(); // Migration is not rerun.
+}
+
+#[test]
+fn favorites_rank_before_recent_notes_without_changing_edit_metadata() {
+    let root = TestRoot::new();
+    let connection = open_database(&root.database()).unwrap();
+    insert_note(&connection, "old", &doc("Old"), "sage", 1, "").unwrap();
+    insert_note(&connection, "new", &doc("New"), "cream", 99, "").unwrap();
+    connection
+        .execute("UPDATE notes SET favorite=1 WHERE id='old'", [])
+        .unwrap();
+    let notes = list_notes(&connection, false, "", None).unwrap();
+    assert_eq!(
+        notes.iter().map(|n| n.id.as_str()).collect::<Vec<_>>(),
+        vec!["old", "new"]
+    );
+    assert_eq!(
+        (notes[0].revision, notes[0].updated_at, notes[0].favorite),
+        (0, 1, true)
+    );
+    assert_eq!(
+        list_notes(&connection, false, "New", None).unwrap()[0].id,
+        "new"
+    );
+    assert_eq!(
+        list_notes(&connection, false, "", Some("cream")).unwrap()[0].id,
+        "new"
+    );
+}
+
+#[test]
+fn history_is_atomic_retains_images_and_survives_restart() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    let image = serde_json::json!({"type":"doc","content":[{"type":"image","attrs":{"assetId":"12345678-1234-1234-1234-123456789abc.png","alt":"A picture"}}]});
+    insert_note(&connection, "note", &image, "rose", 12, "Before").unwrap();
+    save_document(
+        &mut connection,
+        "note",
+        0,
+        &doc("After"),
+        20,
+        Some("After title"),
+    )
+    .unwrap();
+    let version = crate::history::get(&connection, "note", 0).unwrap();
+    assert_eq!(version.document, image);
+    assert_eq!(
+        (
+            version.explicit_title.as_str(),
+            version.color.as_str(),
+            version.saved_at
+        ),
+        ("Before", "rose", 12)
+    );
+    assert!(save_document(&mut connection, "note", 0, &doc("Stale"), 30, None).is_err());
+    assert_eq!(crate::history::list(&connection, "note").unwrap().len(), 1);
+    connection.execute_batch("CREATE TRIGGER fail_save BEFORE UPDATE ON notes BEGIN SELECT RAISE(ABORT, 'write failed'); END;").unwrap();
+    assert!(save_document(&mut connection, "note", 1, &doc("Failed"), 30, None).is_err());
+    assert_eq!(crate::history::list(&connection, "note").unwrap().len(), 1);
+    drop(connection);
+    let connection = open_database(&root.database()).unwrap();
+    assert_eq!(
+        crate::history::get(&connection, "note", 0)
+            .unwrap()
+            .document,
+        image
+    );
+    assert_eq!(
+        load_note(&connection, "note", false).unwrap().document,
+        Some(doc("After"))
+    );
+}
+
+#[test]
+fn history_skips_unchanged_saves_is_bounded_and_follows_permanent_deletion() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    insert_note(&connection, "note", &doc("Same"), "cream", 1, "").unwrap();
+    assert_eq!(
+        save_document(&mut connection, "note", 0, &doc("Same"), 2, None)
+            .unwrap()
+            .revision,
+        0
+    );
+    assert!(
+        crate::history::list(&connection, "note")
+            .unwrap()
+            .is_empty()
+    );
+    for revision in 0..105 {
+        save_document(
+            &mut connection,
+            "note",
+            revision,
+            &doc(&format!("Change {revision}")),
+            revision + 10,
+            None,
+        )
+        .unwrap();
+    }
+    let entries = crate::history::list(&connection, "note").unwrap();
+    assert_eq!(entries.len(), 100);
+    assert_eq!(
+        (
+            entries.first().unwrap().revision,
+            entries.last().unwrap().revision
+        ),
+        (104, 5)
+    );
+    assert!(crate::history::get(&connection, "note", 0).is_err());
+    connection
+        .execute("UPDATE notes SET trashed_at=1 WHERE id='note'", [])
+        .unwrap();
+    purge_notes_batch(&mut connection, &["note"]).unwrap();
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM note_history", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn desk_round_trips_expanded_size_folded_state_and_open_set() {
+    let root = TestRoot::new();
+    let connection = open_database(&root.database()).unwrap();
+    for id in ["open", "closed", "trashed"] {
+        insert_note(&connection, id, &doc(id), "cream", 1, "").unwrap();
+    }
+    let p = crate::desk::Placement {
+        width: 480.0,
+        height: 620.0,
+        x: Some(-700),
+        y: Some(90),
+        folded: true,
+        is_open: true,
+    };
+    crate::desk::save(&connection, "open", &p).unwrap();
+    crate::desk::save(
+        &connection,
+        "closed",
+        &crate::desk::Placement {
+            is_open: false,
+            ..p.clone()
+        },
+    )
+    .unwrap();
+    crate::desk::save(&connection, "trashed", &p).unwrap();
+    connection
+        .execute("UPDATE notes SET trashed_at=1 WHERE id='trashed'", [])
+        .unwrap();
+    drop(connection);
+    let connection = open_database(&root.database()).unwrap();
+    assert_eq!(crate::desk::open_ids(&connection).unwrap(), vec!["open"]);
+    let restored = crate::desk::load(&connection, "open").unwrap();
+    assert_eq!(
+        (
+            restored.width,
+            restored.height,
+            restored.x,
+            restored.y,
+            restored.folded
+        ),
+        (480.0, 620.0, Some(-700), Some(90), true)
+    );
+    connection
+        .execute("DELETE FROM notes WHERE id='open'", [])
+        .unwrap();
+    assert!(crate::desk::open_ids(&connection).unwrap().is_empty());
+}
+
 fn legacy_database(path: &Path) -> Connection {
     let connection = Connection::open(path).unwrap();
     connection.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE notes (id TEXT PRIMARY KEY, document_json TEXT NOT NULL, plain_text TEXT NOT NULL DEFAULT '', color TEXT NOT NULL DEFAULT 'cream', revision INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, trashed_at INTEGER);").unwrap();

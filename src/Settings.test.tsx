@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Settings } from "./Settings";
 import { ThemeProvider } from "./theme";
 
-const mocks = vi.hoisted(() => ({ getSettings: vi.fn(), setRunInBackground: vi.fn() }));
-vi.mock("./api", () => ({ notesApi: { getSettings: mocks.getSettings, setRunInBackground: mocks.setRunInBackground } }));
+const mocks = vi.hoisted(() => ({ getSettings: vi.fn(), setRunInBackground: vi.fn(), setRememberDesk: vi.fn() }));
+vi.mock("./api", () => ({ notesApi: { getSettings: mocks.getSettings, setRunInBackground: mocks.setRunInBackground, setRememberDesk: mocks.setRememberDesk } }));
 
 function renderSettings() {
   return render(<ThemeProvider><Settings /></ThemeProvider>);
@@ -17,6 +17,17 @@ describe("Settings", () => {
     mocks.setRunInBackground.mockReset().mockResolvedValue({ runInBackground: false, trayAvailable: true, warning: null });
   });
   afterEach(() => cleanup());
+
+  it("preserves Remember my desk after a failed save and allows retry", async () => {
+    mocks.setRememberDesk.mockReset().mockRejectedValueOnce(new Error("Disk full")).mockResolvedValue({ rememberDesk: false, runInBackground: true, trayAvailable: true, warning: null });
+    renderSettings();
+    const toggle=await screen.findByRole("switch", { name: "Remember my desk" });
+    fireEvent.click(toggle);
+    await screen.findByRole("alert");
+    expect((toggle as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(toggle);
+    await waitFor(() => expect((toggle as HTMLInputElement).checked).toBe(false));
+  });
 
   it("keeps the previous switch value when saving fails and allows a retry", async () => {
     mocks.setRunInBackground.mockRejectedValueOnce("Settings could not be persisted; the previous effective preference remains active");
