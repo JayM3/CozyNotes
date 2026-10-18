@@ -5,35 +5,37 @@
 <h1 align="center">CozyNotes</h1>
 
 <p align="center">
-  <strong>A little home for your notes.</strong><br />
-  Small reminders, everyday lists, and thoughts worth keeping.
+  <strong>A little home for your notes.</strong>
 </p>
 
-CozyNotes is a quiet desktop notes app with soft paper colors and a cozy place to write. Keep a note beside your work, find an old idea in your library, or tick off a little list. Your notes stay on your device, and the app works offline without an account. Fonts are bundled locally, too.
+CozyNotes is an offline desktop notes app for Windows, macOS, and Linux. Write in floating notes, organize lists, and find ideas in a searchable library. Your notes stay on your device. No account needed.
 
-## Make yourself at home
+**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.2
 
-- **Room to think.** Open notes in their own windows and let autosave take care of your writing.
-- **Fit your workspace.** New notes open at a compact 305 by 385 size. Resize the toolbar with its bottom handle; each note remembers its preferred toolbar height.
-- **Line notes up.** On Windows, drag notes close to a desktop edge or another note to snap their edges together. Keep dragging to pull away. Notes keep their size and move independently, including when folded.
-- **Match a neighboring note.** On Windows, resize any side or corner of a note touching another note to snap to its width, height, or both. The other note stays fixed; keep resizing to pull away.
-- **A little structure.** Use rich text, bullet lists, and checklists. Reset completed items when a list needs a fresh start.
-- **Find things again.** Search your library, filter by paper color, or find a word inside a note.
-- **Pick your paper.** Choose Cream, Butter, Sage, Rose, Lavender, or Mist.
-- **Set the mood.** Open Settings to choose Warm, Night, or System. Your preference is remembered and shared across open windows.
-- **Stay within reach.** Use the CozyNotes icon in the system tray to open a note, show the main menu, or exit. Run in background is enabled by default and can be changed in Settings.
-- **Keep a note visible.** Use **Keep on top** in a note toolbar to keep that note above ordinary windows while you work elsewhere. The setting belongs to the current note window, resets when that window is closed, and is unavailable on Linux Wayland sessions.
-- **Tidy up together.** Select the circles beside notes to move several to Trash. Select all applies to the notes in your current search and paper-color filter.
-- **Keep what matters.** Duplicate a useful note or restore one from Trash before deleting it for good.
-- **Remember your desk.** Reopen notes left open at exit, with their sizes, supported positions, and folded state. Notes closed individually stay closed. Turn automatic reopening off in Settings.
-- **Keep favorites close.** Star notes from the library or a note's More menu. Favorites appear first, and the Favorites only filter works with search and paper colors.
-- **Find an earlier version.** Open More > Note history to preview up to 100 earlier saved versions, including formatting and images. Restore a version as a new note while keeping the current note.
-- **Make a little room.** Fold a note using the footer arrow or More > Fold note. The compact title strip can be moved, unfolded, or closed.
-- **Add pictures.** Paste, drop, or choose local images. CozyNotes keeps its own copy on your device.
+- Rich text, checklists, images, and autosave.
+- Colored paper, light and dark themes, and favorites.
+- Foldable notes, saved window layouts, Trash, and note history.
 
-## Settle in
+<details>
+<summary>Features</summary>
+
+- **Writing:** Rich text, bullet lists, resettable checklists, and local images added by paste, drop, or file picker. Fonts are bundled locally.
+- **Organization:** Library search, in-note find, paper-color filters, favorites, duplication, and bulk Trash actions. Favorites appear first; the Favorites only filter combines with search and paper colors.
+- **Appearance:** Cream, Butter, Sage, Rose, Lavender, or Mist paper, with Warm, Night, or System themes shared across windows.
+- **Windows:** Independent notes with autosave, folding, and remembered sizes and toolbar heights. New notes start at 305 by 385. On Windows, notes snap to desktop edges and neighboring notes, including matching a neighbor's size.
+- **Keep on top:** Pin a note above ordinary windows from its toolbar. This resets when the note window closes and is unavailable on Linux Wayland.
+- **Remember my desk:** Reopen notes left open at exit with their sizes, supported positions, and folded state. Individually closed notes stay closed. Automatic reopening can be disabled in Settings.
+- **History and recovery:** Preview up to 100 earlier saved versions from **More > Note history**, including formatting and images. Restore a version as a new note, or recover deleted notes from Trash before permanent deletion.
+- **Background access:** Use the system tray to open notes, show the main menu, or exit. Run in background is enabled by default and can be changed in Settings.
+
+</details>
+
+<details>
+<summary>Using CozyNotes and keyboard shortcuts</summary>
 
 Create a note from the library and start writing. Drag the library by its heading or branding; drag a note using empty space along its toolbar or footer. Closing a note saves it and keeps it in your library.
+
+Fold a note with the footer arrow or **More > Fold note**. The folded title strip can be moved, unfolded, or closed. Resize the toolbar with its bottom handle.
 
 Windows notes snap to all four desktop work-area edges, clear of the taskbar, and to the sides of other visible CozyNotes notes. Adjacent notes can also align their top, bottom, left, or right edges. Snapping catches within 10 logical pixels and releases beyond 22 logical pixels; distances follow display scaling. Minimized, hidden, and other virtual-desktop notes are excluded. The library is not a snap target. macOS and Linux retain their existing window dragging.
 
@@ -56,9 +58,12 @@ Use `Ctrl` on Windows/Linux or `Cmd` on macOS:
 | Ctrl/Cmd + + / - | Adjust note reading size |
 | Ctrl/Cmd + 0 | Reset note reading size |
 
-## Growing gently
+</details>
 
-CozyNotes is in early development, currently **0.2.2**. Download the app from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
+<details>
+<summary>Downloads and platform notes</summary>
+
+Choose a download from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
 
 | Platform | Download |
 | --- | --- |
@@ -71,9 +76,12 @@ The Windows executable requires WebView2 Runtime, which the installer can instal
 
 Windows and macOS downloads are not signed with publisher certificates, and macOS builds are not notarized. Windows has received local desktop testing; macOS and Linux still need native interaction testing. Release builds and automated checks run on GitHub Actions for all three platforms. Each release includes `SHA256SUMS.txt` for checking downloaded files.
 
-User-facing backup and restore and exports are still on the wish list. You can also build the app from source using the steps below.
+User-facing backup, restore, and export are not yet available.
 
-## Run it locally
+</details>
+
+<details>
+<summary>Build from source and development checks</summary>
 
 Built with Tauri 2, React, TypeScript, and Rust. Use Node.js **24.15.0 or a newer 24.x release**, npm, stable Rust, and the native prerequisites for your platform:
 
@@ -95,9 +103,6 @@ npm run tauri dev
 ```
 
 `npm run dev` opens the frontend alone. Saving notes and managing desktop windows require the Tauri runtime.
-
-<details>
-<summary>Builds, checks, and Windows network shares</summary>
 
 Run the automated checks:
 
@@ -127,7 +132,8 @@ See the [Keep on top research and verification record](docs/2026-10-18-keep-on-t
 
 </details>
 
-## Your notes live here
+<details>
+<summary>Local storage, note history, and recovery</summary>
 
 Notes are stored in `data/cozynotes.sqlite` inside Tauri's per-user app-local-data directory for `com.cozynotes.app`, separate from the project folder. Existing libraries receive a safety snapshot in a sibling `recovery/` directory before a database migration. These snapshots are separate from the planned user-facing backup feature.
 
@@ -137,8 +143,8 @@ Window sizes, placement, and folding are remembered separately from note content
 
 For isolated desktop testing, debug builds accept an absolute local `COZYNOTES_TEST_DATA_DIR`; release builds ignore it. Keep personal notes, databases, and private screenshots out of commits and issue reports.
 
-## Lend a hand
+</details>
 
-Bug reports, small improvements, and thoughtful ideas are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). The [design notes](design.md) describe the colors, typography, and quiet interactions that make CozyNotes feel like home.
+[Contributing](CONTRIBUTING.md) · [Design notes](design.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-Made available under the [MIT License](LICENSE). Bundled fonts and dependencies keep their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
+Made available under the [MIT License](LICENSE). Bundled fonts and dependencies keep their own licenses.
