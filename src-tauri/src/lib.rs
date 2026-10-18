@@ -1,3 +1,4 @@
+mod assets;
 mod desktop;
 mod document;
 mod operations;
@@ -120,6 +121,31 @@ fn list_notes(
 fn get_note(state: tauri::State<'_, Database>, id: String) -> Result<Note, String> {
     let connection = state.0.lock().map_err(|error| error.to_string())?;
     storage::load_note(&connection, &id, false)
+}
+
+#[tauri::command]
+fn save_image_asset(
+    app: tauri::AppHandle,
+    mime_type: String,
+    bytes: Vec<u8>,
+) -> Result<assets::SavedAsset, String> {
+    ensure_idle(&app)?;
+    assets::save(&app, &mime_type, &bytes)
+}
+
+#[tauri::command]
+fn read_image_asset(app: tauri::AppHandle, asset_id: String) -> Result<assets::ImageAsset, String> {
+    assets::read(&app, &asset_id)
+}
+
+#[tauri::command]
+fn delete_image_asset(app: tauri::AppHandle, asset_id: String) -> Result<(), String> {
+    ensure_idle(&app)?;
+    if !assets::is_valid_asset_id(&asset_id) {
+        return Err("Invalid image asset".into());
+    }
+    assets::remove(&app, &asset_id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -308,19 +334,28 @@ async fn duplicate_note(
     ensure_idle(&app)?;
     let connection = state.0.lock().map_err(|error| error.to_string())?;
     let source = storage::load_note(&connection, &id, false)?;
-    let document = source
+    let mut document = source
         .document
         .ok_or("This saved note needs recovery and cannot be duplicated.")?;
+    let copied_assets = assets::clone_document_assets(&app, &mut document)?;
     let copy_id = uuid::Uuid::new_v4().to_string();
     let timestamp = now();
-    let note = storage::insert_note(
+    let note = match storage::insert_note(
         &connection,
         &copy_id,
         &document,
         &source.color,
         timestamp,
         &source.explicit_title,
-    )?;
+    ) {
+        Ok(note) => note,
+        Err(error) => {
+            for asset_id in copied_assets {
+                assets::remove(&app, &asset_id);
+            }
+            return Err(error);
+        }
+    };
     drop(connection);
     drop(guard);
     let _ = app.emit("note-created", &copy_id);
@@ -682,6 +717,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_notes,
             get_note,
+            save_image_asset,
+            read_image_asset,
+            delete_image_asset,
             create_note,
             open_note,
             show_library,

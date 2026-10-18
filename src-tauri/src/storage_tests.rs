@@ -494,6 +494,24 @@ fn document_validation_keeps_all_previously_configured_starterkit_nodes_and_mark
 }
 
 #[test]
+fn image_blocks_validate_and_are_represented_in_recovery_text() {
+    let document = json!({"type":"doc","content":[
+        {"type":"paragraph","content":[{"type":"text","text":"Before"}]},
+        {"type":"image","attrs":{"assetId":"550e8400-e29b-41d4-a716-446655440000.png","alt":"Screenshot"}},
+        {"type":"paragraph","content":[{"type":"text","text":"After"}]}
+    ]});
+    document::validate(&document).unwrap();
+    assert_eq!(document::plain_text(&document), "Before\n[Image]\nAfter\n");
+
+    for invalid in [
+        json!({"type":"doc","content":[{"type":"image","attrs":{"assetId":"../../outside.png"}}]}),
+        json!({"type":"doc","content":[{"type":"image","attrs":{"assetId":"550e8400-e29b-41d4-a716-446655440000.png","unknown":true}}]}),
+    ] {
+        assert!(document::validate(&invalid).is_err());
+    }
+}
+
+#[test]
 fn invalid_saves_never_modify_existing_rows() {
     let root = TestRoot::new();
     let mut connection = open_database(&root.database()).unwrap();

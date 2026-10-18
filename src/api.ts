@@ -21,6 +21,7 @@ export type Note = Omit<NoteSummary, "snippet"> & {
   plainText: string;
 };
 export type NoteDraft = { document: JSONContent; explicitTitle: string };
+export type SavedImageAsset = { assetId: string; mimeType: string };
 export type LibraryFilter = { query: string; color: PaperColor | null };
 export type AppSettings = { runInBackground: boolean; trayAvailable: boolean; warning: string | null };
 export type PlatformCapabilities = { absoluteWindowPosition: boolean; alwaysOnTop: boolean };
@@ -33,6 +34,9 @@ export const notesApi = {
   open: (id: string) => invoke<void>("open_note", { id }),
   save: (id: string, expectedRevision: number, draft: NoteDraft) =>
     invoke<Note>("save_note", { id, expectedRevision, ...draft }),
+  saveImage: (mimeType: string, bytes: number[]) =>
+    invoke<SavedImageAsset>("save_image_asset", { mimeType, bytes }),
+  deleteImage: (assetId: string) => invoke<void>("delete_image_asset", { assetId }),
   color: (id: string, color: PaperColor) => invoke<void>("set_note_color", { id, color }),
   duplicate: (id: string) => invoke<Note>("duplicate_note", { id }),
   trash: (id: string) => invoke<void>("trash_note", { id }),

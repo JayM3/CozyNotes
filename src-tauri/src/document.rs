@@ -36,6 +36,7 @@ fn is_block(name: &str) -> bool {
             | "taskList"
             | "codeBlock"
             | "horizontalRule"
+            | "image"
     )
 }
 
@@ -83,10 +84,20 @@ fn validate_node(node: &Value, depth: usize) -> Result<(), String> {
                 .is_some_and(|child| kind(child) == "paragraph")
                 && content.iter().skip(1).all(|child| is_block(kind(child)))
         }
-        "text" | "hardBreak" | "horizontalRule" => content.is_empty(),
+        "text" | "hardBreak" | "horizontalRule" | "image" => content.is_empty(),
         _ => false,
     };
     if !valid_children || (name == "doc" && depth != 0) {
+        return Err(invalid());
+    }
+    if name == "image"
+        && !object
+            .get("attrs")
+            .and_then(Value::as_object)
+            .and_then(|attrs| attrs.get("assetId"))
+            .and_then(Value::as_str)
+            .is_some_and(crate::assets::is_valid_asset_id)
+    {
         return Err(invalid());
     }
     match (name, object.get("text")) {
@@ -106,6 +117,10 @@ fn validate_node(node: &Value, depth: usize) -> Result<(), String> {
                     value.is_null() || value.is_string()
                 }
                 ("taskItem", "checked") => value.is_boolean(),
+                ("image", "assetId") => {
+                    value.as_str().is_some_and(crate::assets::is_valid_asset_id)
+                }
+                ("image", "alt") => value.is_null() || value.is_string(),
                 _ => false,
             };
             if !valid {
@@ -162,6 +177,7 @@ pub fn plain_text(document: &Value) -> String {
                 }
             }
             "hardBreak" => output.push('\n'),
+            "image" => output.push_str("[Image]\n"),
             _ => {
                 if let Some(children) = node.get("content").and_then(Value::as_array) {
                     for child in children {

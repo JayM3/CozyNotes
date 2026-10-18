@@ -6,11 +6,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
 import type { SelectionBookmark } from "@tiptap/pm/state";
+import { TextSelection } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
-import { AArrowDown, AArrowUp, ArrowDown, ArrowUp, Bold, Check, CheckSquare, Copy, Italic, List, MoreHorizontal, Plus, RotateCcw, Search, Trash2, Underline as UnderlineIcon, X } from "lucide-react";
+import { AArrowDown, AArrowUp, ArrowDown, ArrowUp, Bold, Check, CheckSquare, Copy, ImagePlus, Italic, List, MoreHorizontal, Plus, RotateCcw, Search, Trash2, Underline as UnderlineIcon, X } from "lucide-react";
 import { notesApi, paperColors } from "./api";
 import type { Note, NoteDraft, PaperColor } from "./api";
 import { SaveCoordinator } from "./saveCoordinator";
@@ -23,9 +24,10 @@ import { ThemeMenuItems } from "./ThemePicker";
 import { EditorOperationCoordinator } from "./editorOperation";
 import type { EditorOperation, EditorOperationFinish } from "./editorOperation";
 import { KeepOnTopButton, useKeepOnTop } from "./KeepOnTop";
+import { CozyImage } from "./ImageNode";
+import { imageFiles, imageType, MAX_IMAGE_BYTES } from "./imageImport";
 
 const readingSizes = [12, 14, 16, 18, 20, 24];
-
 export function NoteWindow({ id }: { id: string }) {
   const nativeWindow = useMemo(() => getCurrentWindow(), []);
   const [note, setNote] = useState<Note | null>(null);
@@ -46,6 +48,7 @@ export function NoteWindow({ id }: { id: string }) {
   const bookmark = useRef<SelectionBookmark | null>(null);
   const coordinator = useRef<SaveCoordinator<NoteDraft, Note> | null>(null);
   const editorRef = useRef<Editor | null>(null);
+  const imageFileInput = useRef<HTMLInputElement>(null);
   const allowClose = useRef(false);
   const actionInFlight = useRef<Promise<boolean> | null>(null);
   const actionKind = useRef<string | null>(null);
@@ -54,8 +57,38 @@ export function NoteWindow({ id }: { id: string }) {
   const initialFocus = useRef(false);
   const keepOnTop = useKeepOnTop(nativeWindow);
 
+  const importImages = useCallback(async (files: File[]) => {
+    const current = editorRef.current;
+    if (!current?.isEditable || !coordinator.current) return;
+    const savedAssets: Array<{ assetId: string; alt: string }> = [];
+    try {
+      for (const file of files) {
+        const mimeType = imageType(file);
+        if (!mimeType) {
+          throw new Error("This image format is not supported. Use PNG, JPEG, GIF, WebP, or BMP.");
+        }
+        if (file.size > MAX_IMAGE_BYTES) {
+          throw new Error("Images must be 25 MB or smaller.");
+        }
+        const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
+        const asset = await notesApi.saveImage(mimeType, bytes);
+        savedAssets.push({ assetId: asset.assetId, alt: file.name || "Pasted image" });
+      }
+      if (!current.isEditable || current.isDestroyed) throw new Error("The note is no longer editable.");
+      const inserted = current.chain().focus().insertContent(savedAssets.map(asset => ({
+        type: "image",
+        attrs: { assetId: asset.assetId, alt: asset.alt },
+      }))).run();
+      if (!inserted) throw new Error("Couldn't insert the image. The note was not changed.");
+      setError("");
+    } catch (cause) {
+      await Promise.all(savedAssets.map(asset => notesApi.deleteImage(asset.assetId).catch(() => undefined)));
+      setError(cause instanceof Error && cause.message ? cause.message : "Couldn't import the image. The note was not changed.");
+    }
+  }, []);
+
   const editor = useEditor({
-    extensions: [StarterKit.configure({ underline: false, link: { openOnClick: false } }), Underline, TaskList, TaskItem.configure({ nested: true }), FindExtension],
+    extensions: [StarterKit.configure({ underline: false, link: { openOnClick: false } }), Underline, TaskList, TaskItem.configure({ nested: true }), CozyImage, FindExtension],
     content: { type: "doc", content: [{ type: "paragraph" }] },
     editable: false,
     enableContentCheck: true,
@@ -64,6 +97,22 @@ export function NoteWindow({ id }: { id: string }) {
       handleDOMEvents: {
         compositionstart: () => { coordinator.current?.setComposing(true); return false; },
         compositionend: () => { window.setTimeout(() => coordinator.current?.setComposing(false), 0); return false; },
+      },
+      handlePaste: (_view, event) => {
+        const files = imageFiles(event.clipboardData);
+        if (!files.length) return false;
+        event.preventDefault();
+        void importImages(files);
+        return true;
+      },
+      handleDrop: (view, event) => {
+        const files = imageFiles(event.dataTransfer);
+        if (!files.length) return false;
+        event.preventDefault();
+        const position = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        if (position) view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(position.pos))));
+        void importImages(files);
+        return true;
       },
     },
     onUpdate: ({ editor: updated }) => coordinator.current?.markDirty({ document: updated.getJSON(), explicitTitle: titleValue.current }),
@@ -230,6 +279,7 @@ export function NoteWindow({ id }: { id: string }) {
     catch { setError(failure); }
   }, []);
   const command = (run: (current: Editor) => void) => { if (editor?.isEditable) { run(editor); editor.commands.focus(); } };
+  const chooseImage = () => { if (editor?.isEditable) imageFileInput.current?.click(); };
   const changeColor = async (color: PaperColor) => {
     try { await notesApi.color(id, color); setNote(current => current ? { ...current, color } : current); }
     catch { setError("Couldn't change paper color."); }
@@ -300,6 +350,7 @@ export function NoteWindow({ id }: { id: string }) {
   return <main className={`note-window paper-${note?.color ?? "cream"}`} style={{ "--reading-size": `${fontSize}px` } as CSSProperties}>
     <header className="note-toolbar" data-tauri-drag-region onMouseDown={startWindowDrag}>
       <div className="toolbar-group" role="group" aria-label="Text formatting" data-tauri-drag-region>
+        <button className="tool" disabled={!ready || locked} aria-label="Insert image" title="Insert image" onMouseDown={event => event.preventDefault()} onClick={chooseImage}><ImagePlus size={16} /></button>
         <button className={`tool ${state?.bold ? "active" : ""}`} disabled={!ready || locked} aria-label="Bold" title="Bold" aria-pressed={state?.bold ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleBold().run())}><Bold size={16} /></button>
         <button className={`tool secondary-format ${state?.italic ? "active" : ""}`} disabled={!ready || locked} aria-label="Italic" title="Italic" aria-pressed={state?.italic ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleItalic().run())}><Italic size={16} /></button>
         <button className={`tool secondary-format ${state?.underline ? "active" : ""}`} disabled={!ready || locked} aria-label="Underline" title="Underline" aria-pressed={state?.underline ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleUnderline().run())}><UnderlineIcon size={16} /></button>
@@ -340,6 +391,7 @@ export function NoteWindow({ id }: { id: string }) {
       <button className="tool" aria-label="Close find" title="Close find" onClick={dismissFind}><X size={16} /></button>
     </div>}
     <NoteTitle inputRef={titleInput} value={title} readOnly={!ready || locked} find={state?.find} onChange={changeTitle} onEnter={() => { if (editor?.isEditable) editor.commands.focus("start"); }} onBlur={() => { void coordinator.current?.flush().catch(() => undefined); }} onComposition={composing => coordinator.current?.setComposing(composing)} />
+    <input ref={imageFileInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp" multiple aria-label="Choose images" onChange={event => { void importImages(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
     <section className="note-body">
       {error && <div className="save-error" role="alert">{error}<div className="error-actions"><button onClick={() => void retry()}>Retry</button><button onClick={() => void copyDraft()}>{loadError ? "Copy available text" : "Copy draft"}</button></div></div>}
       {loadError && note?.plainText ? <pre className="recovery-text">{note.plainText}</pre> : <EditorContent editor={editor} />}
