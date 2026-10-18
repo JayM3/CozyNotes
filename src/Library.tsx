@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ArchiveRestore, ArrowRight, Check, Plus, Search, Settings as SettingsIcon, StickyNote, Trash2, X } from "lucide-react";
 import { notesApi, paperColors } from "./api";
+import { version } from "../package.json";
 import type { LibraryFilter, View } from "./api";
 import { Settings } from "./Settings";
 import { useLibrarySearch } from "./useLibrarySearch";
@@ -329,7 +330,7 @@ export function Library() {
       </nav>
       <div className="rail-bottom">
         <button className={page === "settings" ? "nav-item active settings-nav" : "nav-item settings-nav"} aria-current={page === "settings" ? "page" : undefined} aria-label="Settings" title="Settings" onClick={() => navigate("settings")} disabled={controlsLocked}><SettingsIcon size={16} /> Settings</button>
-        <div className="rail-foot" title="Stored on this device"><span className="local-indicator" /> Stored on this device</div>
+        <div className="rail-foot">v{version}</div>
       </div>
     </aside>
     <section className="library-content">

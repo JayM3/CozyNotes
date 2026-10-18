@@ -297,7 +297,6 @@ export function NoteWindow({ id }: { id: string }) {
   }, [editor, findOpen, activeIndex, matchCount, findQuery]);
 
   const ready = Boolean(note) && !loadError && closeReady;
-  const statusText = saveStatus === "loading" ? "Loading..." : saveStatus === "saving" ? "Saving..." : saveStatus === "error" ? "Couldn't save" : "Saved on this device";
   return <main className={`note-window paper-${note?.color ?? "cream"}`} style={{ "--reading-size": `${fontSize}px` } as CSSProperties}>
     <header className="note-toolbar" data-tauri-drag-region onMouseDown={startWindowDrag}>
       <div className="toolbar-group" role="group" aria-label="Text formatting" data-tauri-drag-region>
@@ -345,6 +344,6 @@ export function NoteWindow({ id }: { id: string }) {
       {error && <div className="save-error" role="alert">{error}<div className="error-actions"><button onClick={() => void retry()}>Retry</button><button onClick={() => void copyDraft()}>{loadError ? "Copy available text" : "Copy draft"}</button></div></div>}
       {loadError && note?.plainText ? <pre className="recovery-text">{note.plainText}</pre> : <EditorContent editor={editor} />}
     </section>
-    <footer className="note-footer" data-tauri-drag-region onMouseDown={startWindowDrag}><span className={`save-indicator status-${saveStatus}`} data-tauri-drag-region /><span className="save-label" data-tauri-drag-region>{statusText}</span><div className="reading-controls"><button aria-label="Decrease text size" title="Decrease text size" disabled={fontSize === 12} onClick={() => changeReadingSize(-1)}><AArrowDown size={16} /></button><button aria-label="Increase text size" title="Increase text size" disabled={fontSize === 24} onClick={() => changeReadingSize(1)}><AArrowUp size={16} /></button></div></footer>
+    <footer className="note-footer" data-tauri-drag-region onMouseDown={startWindowDrag}><span className="visually-hidden" role="status" aria-live="polite">{saveStatus === "loading" ? "Loading note" : saveStatus === "saving" ? "Saving note" : saveStatus === "error" ? "Couldn't save note" : "Note saved"}</span><div className="reading-controls"><button aria-label="Decrease text size" title="Decrease text size" disabled={fontSize === 12} onClick={() => changeReadingSize(-1)}><AArrowDown size={16} /></button><button aria-label="Increase text size" title="Increase text size" disabled={fontSize === 24} onClick={() => changeReadingSize(1)}><AArrowUp size={16} /></button></div></footer>
   </main>;
 }
