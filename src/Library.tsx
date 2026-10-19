@@ -341,10 +341,12 @@ export function Library() {
       </div>
     </aside>
     <section className="library-content">
-      <header className="library-header" data-tauri-drag-region onMouseDown={startWindowDrag}>
-        <div data-tauri-drag-region><h1 ref={heading} tabIndex={-1} data-tauri-drag-region>{page === "settings" ? "Settings" : page === "notes" ? "Notes" : "Trash"}</h1></div>
-        <div className="header-actions">{page === "trash" && <button className="text-action empty-trash" onClick={emptyTrash} disabled={controlsLocked}>Empty Trash</button>}<button className="icon-button" aria-label="Close library" title="Close library" disabled={controlsLocked} onClick={() => { void getCurrentWindow().close().catch(() => setActionError("Couldn't close the library.")); }}><X size={17} /></button></div>
-      </header>
+      <div className="library-titlebar" data-tauri-drag-region onMouseDown={startWindowDrag}>
+        <header className="library-header" data-tauri-drag-region>
+          <div data-tauri-drag-region><h1 ref={heading} tabIndex={-1} data-tauri-drag-region>{page === "settings" ? "Settings" : page === "notes" ? "Notes" : "Trash"}</h1></div>
+          <div className="header-actions">{page === "trash" && <button className="text-action empty-trash" onClick={emptyTrash} disabled={controlsLocked}>Empty Trash</button>}<button className="icon-button" aria-label="Close library" title="Close library" disabled={controlsLocked} onClick={() => { void getCurrentWindow().close().catch(() => setActionError("Couldn't close the library.")); }}><X size={17} /></button></div>
+        </header>
+      </div>
       {displayError && <p className="error-banner" role="alert">{displayError} {error && page !== "settings" && <button className="text-action" onClick={() => void refresh()} disabled={controlsLocked}>Retry</button>}</p>}
       {page === "settings" ? <Settings /> : <>
         <label className="search-box"><Search size={17} /><input ref={search} type="search" aria-label={view === "notes" ? "Search notes" : "Search trash"} placeholder={view === "notes" ? "Search your notes" : "Search trash"} value={filter.query} onChange={event => updateFilter({ query: event.target.value })} disabled={controlsLocked} /></label>

@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   setRunInBackground: vi.fn(),
   takeAppError: vi.fn(),
+  startDragging: vi.fn(),
   events: [] as Array<{ name: string; handler: (event: { payload: unknown }) => void }>,
 }));
 
@@ -46,8 +47,7 @@ vi.mock("@tauri-apps/api/event", () => ({
     return vi.fn();
   }),
 }));
-vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.fn().mockResolvedValue(undefined) }) }));
-vi.mock("./windowDrag", () => ({ startWindowDrag: vi.fn() }));
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.fn().mockResolvedValue(undefined), startDragging: mocks.startDragging }) }));
 
 type Summary = { favorite: boolean; id: string; title: string; preview: string; color: string; revision: number; updatedAt: number; snippet: never[] };
 let activeNotes: Summary[];
@@ -90,10 +90,37 @@ describe("library settings and selection", () => {
     mocks.getSettings.mockReset().mockImplementation(async () => settings);
     mocks.setRunInBackground.mockReset().mockImplementation(async (enabled: boolean) => { settings = { ...settings, runInBackground: enabled }; return settings; });
     mocks.takeAppError.mockReset().mockResolvedValue(null);
+    mocks.startDragging.mockReset().mockResolvedValue(undefined);
     mocks.events.length = 0;
   });
 
-  afterEach(() => cleanup());
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  it.each(["Notes", "Trash", "Settings"])("drags the main menu from the blank area above the %s heading", async page => {
+    renderLibrary();
+    await screen.findByRole("checkbox", { name: "Select Alpha" });
+    if (page !== "Notes") fireEvent.click(screen.getByRole("button", { name: page }));
+    const heading = await screen.findByRole("heading", { name: page, level: 1 });
+    const header = heading.closest("header")!;
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+
+    fireEvent.mouseDown(header.parentElement!, { button: 0, detail: 1 });
+
+    expect(mocks.startDragging).toHaveBeenCalledOnce();
+  });
+
+  it("keeps header controls and search interactive in the main menu drag area", async () => {
+    renderLibrary();
+    const search = await screen.findByRole("searchbox", { name: "Search notes" });
+    const close = screen.getByRole("button", { name: "Close library" });
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+
+    for (const target of [close, close.querySelector("svg")!, search]) {
+      expect(fireEvent.mouseDown(target, { button: 0, detail: 1 })).toBe(true);
+    }
+
+    expect(mocks.startDragging).not.toHaveBeenCalled();
+  });
 
   it("recovers a native error queued before the main window registered its listener", async () => {
     mocks.takeAppError.mockImplementation(async () => {

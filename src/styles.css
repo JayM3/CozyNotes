@@ -33,7 +33,8 @@ button:focus-visible, input:focus-visible, summary:focus-visible, select:focus-v
 .source-link:hover { color: var(--color-ink); }
 .local-indicator, .save-indicator { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--color-success); }
 
-.library-content { display: flex; flex-direction: column; min-width: 0; overflow: hidden; padding: var(--space-8) clamp(var(--space-4), 4vw, 56px) var(--space-6); }
+.library-content { --library-padding-top: var(--space-8); --library-padding-inline: clamp(var(--space-4), 4vw, 56px); display: flex; flex-direction: column; min-width: 0; overflow: hidden; padding: 0 var(--library-padding-inline) var(--space-6); }
+.library-titlebar { display: flow-root; flex-shrink: 0; margin-inline: calc(-1 * var(--library-padding-inline)); padding: var(--library-padding-top) var(--library-padding-inline) 0; }
 .library-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-2); max-width: 850px; width: 100%; margin: 0 auto var(--space-6); }
 .header-actions { display: flex; align-items: center; gap: var(--space-2); }
 .empty-trash { margin: 0; font-size: var(--text-xs); }
@@ -264,7 +265,7 @@ h1 { margin: 0; color: var(--color-ink); font: 700 var(--text-heading)/1.1 var(-
   .rail-bottom { width: 100%; }
   .rail-foot { justify-content: center; padding: var(--space-2) 0; font-size: 0; }
   .source-label { display: none; }
-  .library-content { padding: var(--space-6) var(--space-3) var(--space-4); }
+  .library-content { --library-padding-top: var(--space-6); --library-padding-inline: var(--space-3); padding-bottom: var(--space-4); }
   .selection-toolbar { gap: var(--space-1); padding-inline: var(--space-1); }
   .selection-count { flex-basis: 100%; }
   .settings-page { gap: var(--space-6); }
