@@ -2,6 +2,8 @@
 
 CozyNotes is a playful desktop writing workspace with a calm paper editor. The cat-and-notebook logo is the primary sidebar identity; the smiling notebook mark is used for the native application icon and compact empty states.
 
+Design and interaction validation target Windows x64. macOS and Linux support is on hold as of October 19, 2026. Prioritize Windows window behavior, display scaling, keyboard access, and tray integration.
+
 ## Brand
 
 - Sidebar logo: `src/assets/cozynotes-logo.png`

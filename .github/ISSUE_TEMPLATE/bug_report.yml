@@ -11,8 +11,8 @@ body:
   - type: input
     id: platform
     attributes:
-      label: Operating system and version
-      placeholder: Windows 11, macOS, or Linux distribution and display server
+      label: Windows version
+      placeholder: Windows 11 (x64)
     validations:
       required: true
   - type: textarea

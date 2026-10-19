@@ -8,7 +8,11 @@
   <strong>A little home for your notes.</strong>
 </p>
 
-CozyNotes is an offline desktop notes app for Windows, macOS, and Linux. Write in floating notes, organize lists, and find ideas in a searchable library. Your notes stay on your device. No account needed.
+CozyNotes is an offline desktop notes app for Windows x64. Write in floating notes, organize lists, and find ideas in a searchable library. Your notes stay on your device. No account needed.
+
+Windows x64 is the current development, testing, and release target. macOS and Linux support is on hold as of October 19, 2026.
+
+See the [Windows support scope and verification record](docs/2026-10-19-windows-support.md) for the delivery changes and local checks.
 
 **[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.3
 
@@ -24,7 +28,7 @@ CozyNotes is an offline desktop notes app for Windows, macOS, and Linux. Write i
 - **Organization:** Library search, in-note find, paper-color filters, favorites, duplication, and bulk Trash actions. Favorites appear first; the Favorites only filter combines with search and paper colors.
 - **Appearance:** Cream, Butter, Sage, Rose, Lavender, or Mist paper, with Warm, Night, or System themes shared across windows.
 - **Windows:** Independent notes with autosave, folding, and remembered sizes and toolbar heights. New notes start at 305 by 385. On Windows, notes snap to desktop edges and neighboring notes, including matching a neighbor's size.
-- **Keep on top:** Pin a note above ordinary windows from its toolbar. This resets when the note window closes and is unavailable on Linux Wayland.
+- **Keep on top:** Pin a note above ordinary windows from its toolbar. This resets when the note window closes.
 - **Remember my desk:** Reopen notes left open at exit with their sizes, supported positions, and folded state. Individually closed notes stay closed. Automatic reopening can be disabled in Settings.
 - **History and recovery:** Preview up to 100 earlier saved versions from **More > Note history**, including formatting and images. Restore a version as a new note, or recover deleted notes from Trash before permanent deletion.
 - **Background access:** Use the system tray to open notes, show the main menu, or exit. Run in background is enabled by default and can be changed in Settings.
@@ -38,7 +42,7 @@ Create a note from the library and start writing. Drag the library by its headin
 
 Fold a note with the footer arrow or **More > Fold note**. The folded title strip can be moved, unfolded, or closed. Resize the toolbar with its bottom handle.
 
-Windows notes snap to all four desktop work-area edges, clear of the taskbar, and to the sides of other visible CozyNotes notes. Adjacent notes can also align their top, bottom, left, or right edges. Snapping catches within 10 logical pixels and releases beyond 22 logical pixels; distances follow display scaling. Minimized, hidden, and other virtual-desktop notes are excluded. The library is not a snap target. macOS and Linux retain their existing window dragging.
+Windows notes snap to all four desktop work-area edges, clear of the taskbar, and to the sides of other visible CozyNotes notes. Adjacent notes can also align their top, bottom, left, or right edges. Snapping catches within 10 logical pixels and releases beyond 22 logical pixels; distances follow display scaling. Minimized, hidden, and other virtual-desktop notes are excluded. The library is not a snap target.
 
 When resizing notes that touch, left/right handles can snap to a neighbor's width, top/bottom handles to its height, and corners to both. The opposite edges stay anchored. Resize snapping uses notes touching at the start of the gesture and respects the minimum note size.
 
@@ -48,34 +52,31 @@ The **Settings** button in the sidebar opens appearance, background, and Remembe
 
 Select a note using its circle without opening it. The selection bar shows the count and provides **Select all**, **Clear selection**, and **Move to Trash**. In Trash, **Delete selected** asks for confirmation before permanently deleting the selection. Changing the search, paper-color filter, or page clears the selection.
 
-Use `Ctrl` on Windows/Linux or `Cmd` on macOS:
+Use `Ctrl` for keyboard shortcuts:
 
 | Shortcut | A little help |
 | --- | --- |
-| Ctrl/Cmd + N | New note |
-| Ctrl/Cmd + W | Close the current note |
-| Ctrl/Cmd + F | Find in a note, or search from the library |
-| Ctrl/Cmd + Shift + F | Open library search from a note |
-| Ctrl/Cmd + + / - | Adjust note reading size |
-| Ctrl/Cmd + 0 | Reset note reading size |
+| Ctrl + N | New note |
+| Ctrl + W | Close the current note |
+| Ctrl + F | Find in a note, or search from the library |
+| Ctrl + Shift + F | Open library search from a note |
+| Ctrl + + / - | Adjust note reading size |
+| Ctrl + 0 | Reset note reading size |
 
 </details>
 
 <details>
-<summary>Downloads and platform notes</summary>
+<summary>Windows downloads</summary>
 
 Choose a download from [GitHub Releases](https://github.com/JayM3/CozyNotes/releases/latest):
 
 | Platform | Download |
 | --- | --- |
 | Windows x64 | `Cozynote.exe` to run directly, or the `windows_x64_setup.exe` installer |
-| macOS Apple Silicon | `macos_aarch64.dmg` |
-| macOS Intel | `macos_x64.dmg` |
-| Linux x64 | `linux_x64.AppImage` or `linux_x64.deb` |
 
-The Windows executable requires WebView2 Runtime, which the installer can install when needed. Linux packages are built on Ubuntu 22.04 and require WebKitGTK 4.1; the Debian package declares its runtime dependencies. For AppImage, make the file executable before opening it.
+The Windows executable requires WebView2 Runtime, which the installer can install when needed. Older macOS and Linux downloads are historical builds; support and new packages for those platforms are on hold.
 
-Windows and macOS downloads are not signed with publisher certificates, and macOS builds are not notarized. Windows has received local desktop testing; macOS and Linux still need native interaction testing. Release builds and automated checks run on GitHub Actions for all three platforms. Each release includes `SHA256SUMS.txt` for checking downloaded files.
+Windows downloads are not signed with a publisher certificate. Windows has received local desktop testing. Release builds and automated checks target Windows x64 on GitHub Actions. Each release includes `SHA256SUMS.txt` for checking downloaded files.
 
 User-facing backup, restore, and export are not yet available.
 
@@ -84,17 +85,11 @@ User-facing backup, restore, and export are not yet available.
 <details>
 <summary>Build from source and development checks</summary>
 
-Built with Tauri 2, React, TypeScript, and Rust. Use Node.js **24.15.0 or a newer 24.x release**, npm, stable Rust, and the native prerequisites for your platform:
+Built with Tauri 2, React, TypeScript, and Rust. Development targets Windows x64. Use Node.js **24.15.0 or a newer 24.x release**, npm, stable Rust, and these Windows prerequisites:
 
-- **Windows:** Microsoft C++ Build Tools with the Desktop development with C++ workload, the Windows SDK, WebView2 Runtime, and the MSVC Rust toolchain.
-- **macOS:** Xcode Command Line Tools.
-- **Linux:** WebKitGTK 4.1 and the native build dependencies. On Debian/Ubuntu:
-
-  ```sh
-  sudo apt-get update
-  sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev \
-    libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-  ```
+- Microsoft C++ Build Tools with the Desktop development with C++ workload and the Windows SDK.
+- WebView2 Runtime.
+- The MSVC Rust toolchain.
 
 From the repository root:
 
@@ -114,9 +109,9 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
-Build a desktop executable with `npm run tauri build -- --no-bundle`, or create platform-specific installers with `npm run tauri build`.
+Build a Windows executable with `npm run tauri build -- --no-bundle`, or create the Windows NSIS installer with `npm run tauri build`.
 
-To publish a release, synchronize the versions in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`; add `docs/releases/v<VERSION>.md`; then push the matching `v<VERSION>` tag after CI passes. The release workflow tests and builds Windows x64, both macOS architectures, and Linux x64, then publishes the complete set of downloads and the signed updater manifest. Configure the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and, when applicable, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` before publishing the first update-enabled release. The private key must match the public key in `src-tauri/tauri.conf.json` and must never be committed.
+To publish a release, synchronize the versions in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`; add `docs/releases/v<VERSION>.md`; then push the matching `v<VERSION>` tag after CI passes. The release workflow tests and builds Windows x64, then publishes the standalone executable, NSIS installer, signed updater, checksums, and a Windows-only updater manifest. Configure the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and, when applicable, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` before publishing the first update-enabled release. The private key must match the public key in `src-tauri/tauri.conf.json` and must never be committed.
 
 Build output goes to `src-tauri/target/` (or `CARGO_TARGET_DIR` when set). Executables are under `release/`; installers are under `release/bundle/`. Keep copies of packaged builds and other release files in the local **`releases/`** folder at the repository root. That folder and everything inside it are ignored by Git.
 
@@ -140,7 +135,7 @@ Notes are stored in `data/cozynotes.sqlite` inside Tauri's per-user app-local-da
 
 Note history starts with edits saved by this version; it cannot recover edits made before history was available. Each changed title/body save retains the previous version, up to 100 per note. Unchanged saves, favorites, and window actions do not create versions. Permanently deleting a note also deletes its saved history. Restored notes receive independent copies of their images.
 
-Window sizes, placement, and folding are remembered separately from note content. Automatic reopening is enabled by default. On supported desktops, windows are clamped to current monitor work areas when reopened; Wayland lets the compositor place them. Use **Exit CozyNotes** in the tray to save the complete open-note arrangement.
+Window sizes, placement, and folding are remembered separately from note content. Automatic reopening is enabled by default. Windows are clamped to current monitor work areas when reopened. Use **Exit CozyNotes** in the tray to save the complete open-note arrangement.
 
 For isolated desktop testing, debug builds accept an absolute local `COZYNOTES_TEST_DATA_DIR`; release builds ignore it. Keep personal notes, databases, and private screenshots out of commits and issue reports.
 

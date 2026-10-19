@@ -12,10 +12,14 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   validate:
     name: Validate release version
-    runs-on: ubuntu-22.04
+    runs-on: windows-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -54,37 +58,9 @@ jobs:
           NODE
 
   build:
-    name: Build (${{ matrix.name }})
+    name: Build (Windows x64)
     needs: validate
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Windows x64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bundles: nsis
-            platform: windows
-            arch: x64
-          - name: macOS Apple Silicon
-            os: macos-latest
-            target: aarch64-apple-darwin
-            bundles: app,dmg
-            platform: macos
-            arch: aarch64
-          - name: macOS Intel
-            os: macos-latest
-            target: x86_64-apple-darwin
-            bundles: app,dmg
-            platform: macos
-            arch: x64
-          - name: Linux x64
-            os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bundles: appimage,deb
-            platform: linux
-            arch: x64
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     timeout-minutes: 60
     env:
       CARGO_TERM_COLOR: always
@@ -92,9 +68,7 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       RELEASE_VERSION: ${{ needs.validate.outputs.version }}
-      RELEASE_TARGET: ${{ matrix.target }}
-      RELEASE_PLATFORM: ${{ matrix.platform }}
-      RELEASE_ARCH: ${{ matrix.arch }}
+      RELEASE_TARGET: x86_64-pc-windows-msvc
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -108,19 +82,13 @@ jobs:
           cache: npm
 
       - name: Set up stable Rust
-        run: rustup toolchain install stable --profile minimal --component rustfmt --target ${{ matrix.target }}
+        run: rustup toolchain install stable --profile minimal --component rustfmt --target "$RELEASE_TARGET"
 
       - name: Cache Rust build output
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri -> target
-          shared-key: release-${{ matrix.target }}
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          shared-key: release-windows-x64
 
       - name: Install frontend dependencies
         run: npm ci
@@ -134,66 +102,50 @@ jobs:
       - name: Test backend
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
-      - name: Build native packages
-        env:
-          APPLE_SIGNING_IDENTITY: '-'
-          APPIMAGE_EXTRACT_AND_RUN: '1'
-        run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
+      - name: Build Windows installer and signed updater
+        run: npm run tauri build -- --target "$RELEASE_TARGET" --bundles nsis -- --locked
 
-      - name: Collect native packages
+      - name: Collect Windows installer and signed updater
         shell: bash
         run: |
           node --input-type=module <<'NODE'
-          import { copyFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+          import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
           import { join } from 'node:path';
-          const { RELEASE_VERSION: version, RELEASE_TARGET: target, RELEASE_PLATFORM: platform, RELEASE_ARCH: arch } = process.env;
-          const formats = platform === 'windows' ? [['nsis', '.exe', '_setup.exe']]
-            : platform === 'macos' ? [['dmg', '.dmg', '.dmg']]
-            : [['appimage', '.AppImage', '.AppImage'], ['deb', '.deb', '.deb']];
-          const updaterExtension = platform === 'windows' ? '.exe' : platform === 'macos' ? '.app.tar.gz' : '.AppImage';
-          const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-            const path = join(dir, entry.name);
-            return entry.isDirectory() ? walk(path) : [path];
-          });
+          const { RELEASE_VERSION: version, RELEASE_TARGET: target } = process.env;
+          const dir = join('src-tauri', 'target', target, 'release', 'bundle', 'nsis');
+          const files = readdirSync(dir, { withFileTypes: true })
+            .filter((entry) => entry.isFile() && entry.name.endsWith('.exe'));
+          if (files.length !== 1) throw new Error(`Expected one Windows installer, found ${files.length}`);
+          const installer = join(dir, files[0].name);
+          const setupName = `CozyNotes_${version}_windows_x64_setup.exe`;
+          const updaterName = `CozyNotes_${version}_windows_x64_updater.exe`;
           mkdirSync('release-assets', { recursive: true });
-          for (const [bundle, extension, suffix] of formats) {
-            const dir = join('src-tauri', 'target', target, 'release', 'bundle', bundle);
-            const files = readdirSync(dir).filter((name) => name.endsWith(extension));
-            if (files.length !== 1) throw new Error(`Expected one ${extension} package, found ${files.length}`);
-            const name = `CozyNotes_${version}_${platform}_${arch}${suffix}`;
-            copyFileSync(join(dir, files[0]), join('release-assets', name));
-            console.log(name);
-          }
-          const bundleRoot = join('src-tauri', 'target', target, 'release', 'bundle');
-          const updaterFiles = walk(bundleRoot).filter((path) => path.endsWith(updaterExtension) && statSync(path).isFile());
-          if (updaterFiles.length !== 1) throw new Error(`Expected one ${updaterExtension} updater, found ${updaterFiles.length}`);
-          const updaterName = platform === 'windows' ? `CozyNotes_${version}_windows_x64_updater.exe` : `CozyNotes_${version}_${platform}_${arch}_updater${updaterExtension}`;
-          copyFileSync(updaterFiles[0], join('release-assets', updaterName));
-          copyFileSync(`${updaterFiles[0]}.sig`, join('release-assets', `${updaterName}.sig`));
+          copyFileSync(installer, join('release-assets', setupName));
+          copyFileSync(installer, join('release-assets', updaterName));
+          copyFileSync(`${installer}.sig`, join('release-assets', `${updaterName}.sig`));
+          console.log(setupName);
           console.log(updaterName);
           NODE
 
       - name: Build Windows standalone executable
-        if: runner.os == 'Windows'
-        run: npm run tauri build -- --target x86_64-pc-windows-msvc --no-bundle -- --locked
+        run: npm run tauri build -- --target "$RELEASE_TARGET" --no-bundle -- --locked
 
       - name: Collect Windows standalone executable
-        if: runner.os == 'Windows'
         shell: bash
-        run: cp src-tauri/target/x86_64-pc-windows-msvc/release/cozynotes.exe release-assets/Cozynote.exe
+        run: cp "src-tauri/target/$RELEASE_TARGET/release/cozynotes.exe" release-assets/Cozynote.exe
 
       - name: Retain release downloads
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-${{ matrix.target }}
+          name: release-x86_64-pc-windows-msvc
           path: release-assets/*
           if-no-files-found: error
           retention-days: 7
 
   publish:
-    name: Publish complete release
+    name: Publish Windows release
     needs: [validate, build]
-    runs-on: ubuntu-22.04
+    runs-on: windows-latest
     permissions:
       contents: write
     env:
@@ -212,7 +164,7 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Download native packages
+      - name: Download Windows packages
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: release-*
@@ -227,9 +179,6 @@ jobs:
           const v = process.env.RELEASE_VERSION;
           const artifacts = {
             'release-x86_64-pc-windows-msvc': ['Cozynote.exe', `CozyNotes_${v}_windows_x64_setup.exe`, `CozyNotes_${v}_windows_x64_updater.exe`, `CozyNotes_${v}_windows_x64_updater.exe.sig`],
-            'release-aarch64-apple-darwin': [`CozyNotes_${v}_macos_aarch64.dmg`, `CozyNotes_${v}_macos_aarch64_updater.app.tar.gz`, `CozyNotes_${v}_macos_aarch64_updater.app.tar.gz.sig`],
-            'release-x86_64-apple-darwin': [`CozyNotes_${v}_macos_x64.dmg`, `CozyNotes_${v}_macos_x64_updater.app.tar.gz`, `CozyNotes_${v}_macos_x64_updater.app.tar.gz.sig`],
-            'release-x86_64-unknown-linux-gnu': [`CozyNotes_${v}_linux_x64.AppImage`, `CozyNotes_${v}_linux_x64.deb`, `CozyNotes_${v}_linux_x64_updater.AppImage`, `CozyNotes_${v}_linux_x64_updater.AppImage.sig`],
           };
           const actualArtifacts = readdirSync('release-artifacts').sort();
           if (JSON.stringify(actualArtifacts) !== JSON.stringify(Object.keys(artifacts).sort())) {
@@ -262,9 +211,6 @@ jobs:
 
           const platformFiles = {
             'windows-x86_64': `CozyNotes_${v}_windows_x64_updater.exe`,
-            'darwin-aarch64': `CozyNotes_${v}_macos_aarch64_updater.app.tar.gz`,
-            'darwin-x86_64': `CozyNotes_${v}_macos_x64_updater.app.tar.gz`,
-            'linux-x86_64': `CozyNotes_${v}_linux_x64_updater.AppImage`,
           };
           const platforms = Object.fromEntries(Object.entries(platformFiles).map(([target, name]) => [target, {
             signature: readFileSync(`release-assets/${name}.sig`, 'utf8').trim(),
@@ -278,7 +224,7 @@ jobs:
           }, null, 2) + '\n');
           NODE
 
-      - name: Create release with all downloads
+      - name: Create release with Windows downloads
         run: gh release create "$RELEASE_TAG" --verify-tag --draft --title "CozyNotes $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md" release-assets/*
 
       - name: Publish release

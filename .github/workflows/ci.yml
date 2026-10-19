@@ -15,12 +15,8 @@ concurrency:
 
 jobs:
   check:
-    name: Check (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    name: Check (Windows x64)
+    runs-on: windows-latest
     timeout-minutes: 45
     env:
       CARGO_TERM_COLOR: always
@@ -38,12 +34,6 @@ jobs:
 
       - name: Set up stable Rust
         run: rustup toolchain install stable --profile minimal --component rustfmt
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install frontend dependencies
         run: npm ci
