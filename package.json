@@ -1,7 +1,7 @@
 {
   "name": "cozynotes",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "An offline-first desktop notes app built with Tauri, React, TypeScript, and Rust.",
   "license": "MIT",
   "type": "module",

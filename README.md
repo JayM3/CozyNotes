@@ -14,7 +14,7 @@ Windows x64 is the current development, testing, and release target. macOS and L
 
 See the [Windows support scope and verification record](docs/2026-10-19-windows-support.md) for the delivery changes and local checks.
 
-**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.3
+**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.4
 
 - Rich text, checklists, images, and autosave.
 - Colored paper, light and dark themes, and favorites.
@@ -45,6 +45,8 @@ Fold a note with the footer arrow or **More > Fold note**. The folded title stri
 Windows notes snap to all four desktop work-area edges, clear of the taskbar, and to the sides of other visible CozyNotes notes. Adjacent notes can also align their top, bottom, left, or right edges. Snapping catches within 10 logical pixels and releases beyond 22 logical pixels; distances follow display scaling. Minimized, hidden, and other virtual-desktop notes are excluded. The library is not a snap target.
 
 When resizing notes that touch, left/right handles can snap to a neighbor's width, top/bottom handles to its height, and corners to both. The opposite edges stay anchored. Resize snapping uses notes touching at the start of the gesture and respects the minimum note size.
+
+Double-click a note's left or right border to reset its width to 305 logical pixels, or its top or bottom border to reset its height to 385 logical pixels. Double-clicking a corner resets both dimensions. The opposite edges stay anchored, and the reset size is remembered with the note's window arrangement.
 
 With Run in background enabled, closing the main window keeps CozyNotes available from its icon beside the Windows clock. Right-click that icon for **Notes**, **Show main menu**, and **Exit CozyNotes**. Exit waits for open drafts to save; if a draft cannot save, it stays open for recovery.
 

@@ -12,10 +12,13 @@ use windows_sys::Win32::{
         HiDpi::GetDpiForWindow,
         Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
         WindowsAndMessaging::{
-            EnumThreadWindows, GetClientRect, GetCursorPos, GetPropW, GetWindowRect, IsIconic,
-            IsWindowVisible, RemovePropW, SetPropW, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_MOVING,
-            WM_NCDESTROY, WM_SIZING, WMSZ_BOTTOM, WMSZ_BOTTOMLEFT, WMSZ_BOTTOMRIGHT, WMSZ_LEFT,
-            WMSZ_RIGHT, WMSZ_TOP, WMSZ_TOPLEFT, WMSZ_TOPRIGHT,
+            EnumThreadWindows, GWL_STYLE, GetClientRect, GetCursorPos, GetPropW, GetWindowLongPtrW,
+            GetWindowRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTLEFT, HTRIGHT, HTTOP,
+            HTTOPLEFT, HTTOPRIGHT, IsIconic, IsWindowVisible, RemovePropW, SWP_NOACTIVATE,
+            SWP_NOZORDER, SetPropW, SetWindowPos, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_MOVING,
+            WM_NCDESTROY, WM_NCLBUTTONDBLCLK, WM_SIZING, WMSZ_BOTTOM, WMSZ_BOTTOMLEFT,
+            WMSZ_BOTTOMRIGHT, WMSZ_LEFT, WMSZ_RIGHT, WMSZ_TOP, WMSZ_TOPLEFT, WMSZ_TOPRIGHT,
+            WS_THICKFRAME,
         },
     },
 };
@@ -91,7 +94,7 @@ unsafe extern "system" fn subclass(
     }
     if matches!(
         message,
-        WM_ENTERSIZEMOVE | WM_MOVING | WM_SIZING | WM_EXITSIZEMOVE
+        WM_ENTERSIZEMOVE | WM_MOVING | WM_SIZING | WM_EXITSIZEMOVE | WM_NCLBUTTONDBLCLK
     ) {
         // Native callbacks must not unwind through the Windows message dispatcher.
         let handled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -131,6 +134,15 @@ unsafe extern "system" fn subclass(
                     *drag = Drag::default();
                     false
                 }
+                WM_NCLBUTTONDBLCLK => {
+                    let Some(edge) = border_edge(wparam) else {
+                        return false;
+                    };
+                    *drag = Drag::default();
+                    // Applying the bounds sends native size/move messages synchronously.
+                    drop(drag);
+                    reset_size(hwnd, edge)
+                }
                 WM_MOVING if lparam != 0 => {
                     let proposed = unsafe { &mut *(lparam as *mut RECT) };
                     move_rect(hwnd, &mut drag, proposed)
@@ -147,7 +159,7 @@ unsafe extern "system" fn subclass(
         }))
         .unwrap_or(false);
         if handled {
-            return 1;
+            return if message == WM_NCLBUTTONDBLCLK { 0 } else { 1 };
         }
     }
     unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
@@ -209,6 +221,63 @@ fn sizing_edge(edge: WPARAM) -> Option<ResizeEdge> {
         WMSZ_BOTTOMLEFT => Some(ResizeEdge::BottomLeft),
         WMSZ_BOTTOMRIGHT => Some(ResizeEdge::BottomRight),
         _ => None,
+    }
+}
+
+fn border_edge(hit: WPARAM) -> Option<ResizeEdge> {
+    match u32::try_from(hit).ok()? {
+        HTLEFT => Some(ResizeEdge::Left),
+        HTRIGHT => Some(ResizeEdge::Right),
+        HTTOP => Some(ResizeEdge::Top),
+        HTBOTTOM => Some(ResizeEdge::Bottom),
+        HTTOPLEFT => Some(ResizeEdge::TopLeft),
+        HTTOPRIGHT => Some(ResizeEdge::TopRight),
+        HTBOTTOMLEFT => Some(ResizeEdge::BottomLeft),
+        HTBOTTOMRIGHT => Some(ResizeEdge::BottomRight),
+        _ => None,
+    }
+}
+
+fn reset_size(hwnd: HWND, edge: ResizeEdge) -> bool {
+    // Folded notes have no resize frame; preserve their saved expanded dimensions.
+    if unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32 & WS_THICKFRAME == 0 {
+        return false;
+    }
+    let (Some(outer), Some(client)) = (outer_rect(hwnd), client_rect(hwnd)) else {
+        return false;
+    };
+    let scale = scale(hwnd);
+    let mut width = outer.right - outer.left;
+    let mut height = outer.bottom - outer.top;
+    // Defaults describe visible paper, excluding the native frame and shadow insets.
+    if edge.left() || edge.right() {
+        width = (crate::desk::DEFAULT_WIDTH * scale).round() as i32 + width
+            - (client.right - client.left);
+    }
+    if edge.top() || edge.bottom() {
+        height = (crate::desk::DEFAULT_HEIGHT * scale).round() as i32 + height
+            - (client.bottom - client.top);
+    }
+    let left = if edge.left() {
+        outer.right - width
+    } else {
+        outer.left
+    };
+    let top = if edge.top() {
+        outer.bottom - height
+    } else {
+        outer.top
+    };
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            left,
+            top,
+            width,
+            height,
+            SWP_NOACTIVATE | SWP_NOZORDER,
+        ) != 0
     }
 }
 
@@ -389,8 +458,8 @@ mod tests {
     use super::*;
     use windows_sys::{
         Win32::UI::WindowsAndMessaging::{
-            CreateWindowExW, DestroyWindow, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOSIZE,
-            SWP_NOZORDER, SendMessageW, SetWindowPos, ShowWindow, WS_OVERLAPPEDWINDOW, WS_POPUP,
+            CreateWindowExW, DestroyWindow, HTCLIENT, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOSIZE,
+            SendMessageW, ShowWindow, WS_OVERLAPPEDWINDOW, WS_POPUP,
         },
         core::w,
     };
@@ -498,6 +567,14 @@ mod tests {
                 },
             )
         }
+
+        fn double_click_border(&self, hit: u32) -> Rect {
+            assert_eq!(
+                unsafe { SendMessageW(self.0, WM_NCLBUTTONDBLCLK, hit as WPARAM, 0) },
+                0
+            );
+            client_rect(self.0).unwrap()
+        }
     }
 
     impl Drop for TestWindow {
@@ -594,6 +671,79 @@ mod tests {
         let hwnd = window.0;
         drop(window);
         assert!(unsafe { GetPropW(hwnd, STATE_PROPERTY) }.is_null());
+    }
+
+    #[test]
+    fn native_border_double_click_resets_dimensions_and_anchors_opposite_edges() {
+        for style in [WS_POPUP | WS_THICKFRAME, WS_OVERLAPPEDWINDOW] {
+            for height in [260, 600] {
+                for (hit, horizontal, vertical) in [
+                    (HTLEFT, -1, 0),
+                    (HTRIGHT, 1, 0),
+                    (HTTOP, 0, -1),
+                    (HTBOTTOM, 0, 1),
+                    (HTTOPLEFT, -1, -1),
+                    (HTTOPRIGHT, 1, -1),
+                    (HTBOTTOMLEFT, -1, 1),
+                    (HTBOTTOMRIGHT, 1, 1),
+                ] {
+                    let window = TestWindow::with_style(-800, -600, 700, height, style, true);
+                    let before = client_rect(window.0).unwrap();
+                    let scale = scale(window.0);
+                    let result = window.double_click_border(hit);
+                    let expected_width = if horizontal == 0 {
+                        before.right - before.left
+                    } else {
+                        (crate::desk::DEFAULT_WIDTH * scale).round() as i32
+                    };
+                    let expected_height = if vertical == 0 {
+                        before.bottom - before.top
+                    } else {
+                        (crate::desk::DEFAULT_HEIGHT * scale).round() as i32
+                    };
+                    assert_eq!(result.right - result.left, expected_width);
+                    assert_eq!(result.bottom - result.top, expected_height);
+                    if horizontal < 0 {
+                        assert_eq!(result.right, before.right);
+                    } else {
+                        assert_eq!(result.left, before.left);
+                    }
+                    if vertical < 0 {
+                        assert_eq!(result.bottom, before.bottom);
+                    } else {
+                        assert_eq!(result.top, before.top);
+                    }
+                    // Repeating the reset must not drift the position or frame insets.
+                    assert_eq!(window.double_click_border(hit), result);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_border_double_click_leaves_neighbors_and_client_area_unchanged() {
+        let target = TestWindow::new(800, 100, 400, 300, true);
+        unsafe { ShowWindow(target.0, SW_SHOWNOACTIVATE) };
+        let stationary = client_rect(target.0).unwrap();
+        let window = TestWindow::with_style(100, 100, 700, 600, WS_POPUP | WS_THICKFRAME, true);
+        let before = client_rect(window.0).unwrap();
+        assert_eq!(window.double_click_border(HTCLIENT), before);
+        window.begin_resize();
+        window.double_click_border(HTBOTTOMRIGHT);
+        assert_eq!(client_rect(target.0).unwrap(), stationary);
+        let data = unsafe { GetPropW(window.0, STATE_PROPERTY) };
+        let state = unsafe { &*data.cast::<RefCell<Drag>>() }.borrow();
+        assert!(state.anchor.is_none());
+        assert!(state.resize.is_none());
+    }
+
+    #[test]
+    fn native_border_double_click_preserves_folded_windows() {
+        let window = TestWindow::new(100, 100, 500, 52, true);
+        let before = client_rect(window.0).unwrap();
+        for hit in [HTLEFT, HTRIGHT, HTTOP, HTBOTTOM, HTBOTTOMRIGHT] {
+            assert_eq!(window.double_click_border(hit), before);
+        }
     }
 
     #[test]
