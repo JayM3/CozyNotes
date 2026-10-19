@@ -1,6 +1,6 @@
 [package]
 name = "cozynotes"
-version = "0.2.2"
+version = "0.2.3"
 description = "An offline-first desktop notes app"
 license = "MIT"
 publish = false
@@ -28,6 +28,9 @@ uuid = { version = "1", features = ["v4"] }
 caseless = "=0.2.2"
 unicode-normalization = "=0.1.25"
 unicode-segmentation = "=1.13.3"
+tauri-plugin-updater = "2.14.0"
+tauri-plugin-process = "2.4.0"
+tauri-plugin-shell = "2.5.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

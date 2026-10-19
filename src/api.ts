@@ -25,6 +25,7 @@ export type NoteDraft = { document: JSONContent; explicitTitle: string };
 export type SavedImageAsset = { assetId: string; mimeType: string };
 export type LibraryFilter = { query: string; color: PaperColor | null };
 export type AppSettings = { runInBackground: boolean; rememberDesk: boolean; trayAvailable: boolean; warning: string | null };
+export const sourceCodeUrl = "https://github.com/JayM3/CozyNotes";
 export type NoteWindowState = { width: number; height: number; x: number | null; y: number | null; folded: boolean; isOpen: boolean };
 export type HistoryEntry = { revision: number; savedAt: number; title: string; preview: string };
 export type HistoryVersion = Omit<HistoryEntry, "preview"> & { document: JSONContent; explicitTitle: string; plainText: string; color: PaperColor };

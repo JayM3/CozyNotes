@@ -22,7 +22,7 @@ npm run tauri build -- --debug --no-bundle
 
 Add regression coverage when changing storage, search, editor actions, or save coordination. For interface and lifecycle changes, also run `npm run tauri dev` and exercise creating, editing, closing, reopening, trashing, and restoring notes. Include your operating system and any platforms you could not test in the pull request. Check keyboard access and focus when changing controls.
 
-The CI workflow runs automated tests, Rust formatting, and a debug native build on Windows, macOS, and Linux. The release workflow runs on version tags and builds native packages for Windows x64, macOS Apple Silicon and Intel, and Linux x64. It publishes only after every platform succeeds. Automated builds do not replace native interaction or installer testing; publisher signing and macOS notarization are not configured.
+The CI workflow runs automated tests, Rust formatting, and a debug native build on Windows, macOS, and Linux. The release workflow runs on version tags and builds native packages for Windows x64, macOS Apple Silicon and Intel, and Linux x64. It publishes only after every platform succeeds. Release builds also create signed Tauri updater artifacts; the repository must have `TAURI_SIGNING_PRIVATE_KEY` configured as a GitHub Actions secret, with `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` when the key is password-protected. Automated builds do not replace native interaction or installer testing; publisher signing and macOS notarization are not configured.
 
 ## Reports and pull requests
 

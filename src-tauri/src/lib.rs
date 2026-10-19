@@ -821,6 +821,9 @@ pub fn run() {
                 let _ = show_library(app, None).await;
             });
         }))
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let path = database_path(&app.handle())?;
             let connection = storage::open_database(&path)?;

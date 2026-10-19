@@ -89,6 +89,8 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       RUSTUP_TOOLCHAIN: stable
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       RELEASE_VERSION: ${{ needs.validate.outputs.version }}
       RELEASE_TARGET: ${{ matrix.target }}
       RELEASE_PLATFORM: ${{ matrix.platform }}
@@ -142,12 +144,17 @@ jobs:
         shell: bash
         run: |
           node --input-type=module <<'NODE'
-          import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
+          import { copyFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
           import { join } from 'node:path';
           const { RELEASE_VERSION: version, RELEASE_TARGET: target, RELEASE_PLATFORM: platform, RELEASE_ARCH: arch } = process.env;
           const formats = platform === 'windows' ? [['nsis', '.exe', '_setup.exe']]
             : platform === 'macos' ? [['dmg', '.dmg', '.dmg']]
             : [['appimage', '.AppImage', '.AppImage'], ['deb', '.deb', '.deb']];
+          const updaterExtension = platform === 'windows' ? '.exe.zip' : platform === 'macos' ? '.app.tar.gz' : '.AppImage.tar.gz';
+          const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+            const path = join(dir, entry.name);
+            return entry.isDirectory() ? walk(path) : [path];
+          });
           mkdirSync('release-assets', { recursive: true });
           for (const [bundle, extension, suffix] of formats) {
             const dir = join('src-tauri', 'target', target, 'release', 'bundle', bundle);
@@ -157,6 +164,13 @@ jobs:
             copyFileSync(join(dir, files[0]), join('release-assets', name));
             console.log(name);
           }
+          const bundleRoot = join('src-tauri', 'target', target, 'release', 'bundle');
+          const updaterFiles = walk(bundleRoot).filter((path) => path.endsWith(updaterExtension) && statSync(path).isFile());
+          if (updaterFiles.length !== 1) throw new Error(`Expected one ${updaterExtension} updater, found ${updaterFiles.length}`);
+          const updaterName = platform === 'windows' ? `CozyNotes_${version}_windows_x64_updater.exe.zip` : `CozyNotes_${version}_${platform}_${arch}_updater${updaterExtension}`;
+          copyFileSync(updaterFiles[0], join('release-assets', updaterName));
+          copyFileSync(`${updaterFiles[0]}.sig`, join('release-assets', `${updaterName}.sig`));
+          console.log(updaterName);
           NODE
 
       - name: Build Windows standalone executable
@@ -212,10 +226,10 @@ jobs:
           import { copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
           const v = process.env.RELEASE_VERSION;
           const artifacts = {
-            'release-x86_64-pc-windows-msvc': ['Cozynote.exe', `CozyNotes_${v}_windows_x64_setup.exe`],
-            'release-aarch64-apple-darwin': [`CozyNotes_${v}_macos_aarch64.dmg`],
-            'release-x86_64-apple-darwin': [`CozyNotes_${v}_macos_x64.dmg`],
-            'release-x86_64-unknown-linux-gnu': [`CozyNotes_${v}_linux_x64.AppImage`, `CozyNotes_${v}_linux_x64.deb`],
+            'release-x86_64-pc-windows-msvc': ['Cozynote.exe', `CozyNotes_${v}_windows_x64_setup.exe`, `CozyNotes_${v}_windows_x64_updater.exe.zip`, `CozyNotes_${v}_windows_x64_updater.exe.zip.sig`],
+            'release-aarch64-apple-darwin': [`CozyNotes_${v}_macos_aarch64.dmg`, `CozyNotes_${v}_macos_aarch64_updater.app.tar.gz`, `CozyNotes_${v}_macos_aarch64_updater.app.tar.gz.sig`],
+            'release-x86_64-apple-darwin': [`CozyNotes_${v}_macos_x64.dmg`, `CozyNotes_${v}_macos_x64_updater.app.tar.gz`, `CozyNotes_${v}_macos_x64_updater.app.tar.gz.sig`],
+            'release-x86_64-unknown-linux-gnu': [`CozyNotes_${v}_linux_x64.AppImage`, `CozyNotes_${v}_linux_x64.deb`, `CozyNotes_${v}_linux_x64_updater.AppImage.tar.gz`, `CozyNotes_${v}_linux_x64_updater.AppImage.tar.gz.sig`],
           };
           const actualArtifacts = readdirSync('release-artifacts').sort();
           if (JSON.stringify(actualArtifacts) !== JSON.stringify(Object.keys(artifacts).sort())) {
@@ -245,6 +259,23 @@ jobs:
           });
           writeFileSync('release-assets/SHA256SUMS.txt', checksums.join('\n') + '\n');
           console.log(checksums.join('\n'));
+
+          const platformFiles = {
+            'windows-x86_64': `CozyNotes_${v}_windows_x64_updater.exe.zip`,
+            'darwin-aarch64': `CozyNotes_${v}_macos_aarch64_updater.app.tar.gz`,
+            'darwin-x86_64': `CozyNotes_${v}_macos_x64_updater.app.tar.gz`,
+            'linux-x86_64': `CozyNotes_${v}_linux_x64_updater.AppImage.tar.gz`,
+          };
+          const platforms = Object.fromEntries(Object.entries(platformFiles).map(([target, name]) => [target, {
+            signature: readFileSync(`release-assets/${name}.sig`, 'utf8').trim(),
+            url: `https://github.com/${process.env.GH_REPO}/releases/download/${process.env.RELEASE_TAG}/${name}`,
+          }]));
+          writeFileSync('release-assets/latest.json', JSON.stringify({
+            version: v,
+            notes: readFileSync(`docs/releases/v${v}.md`, 'utf8'),
+            pub_date: new Date().toISOString(),
+            platforms,
+          }, null, 2) + '\n');
           NODE
 
       - name: Create release with all downloads

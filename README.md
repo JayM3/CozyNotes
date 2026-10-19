@@ -10,11 +10,12 @@
 
 CozyNotes is an offline desktop notes app for Windows, macOS, and Linux. Write in floating notes, organize lists, and find ideas in a searchable library. Your notes stay on your device. No account needed.
 
-**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.2
+**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.3
 
 - Rich text, checklists, images, and autosave.
 - Colored paper, light and dark themes, and favorites.
 - Foldable notes, saved window layouts, Trash, and note history.
+- In-app update checks and one-click installation from Settings.
 
 <details>
 <summary>Features</summary>
@@ -115,7 +116,7 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml
 
 Build a desktop executable with `npm run tauri build -- --no-bundle`, or create platform-specific installers with `npm run tauri build`.
 
-To publish a release, synchronize the versions in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`; add `docs/releases/v<VERSION>.md`; then push the matching `v<VERSION>` tag after CI passes. The release workflow tests and builds Windows x64, both macOS architectures, and Linux x64, then publishes the complete set of downloads.
+To publish a release, synchronize the versions in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`; add `docs/releases/v<VERSION>.md`; then push the matching `v<VERSION>` tag after CI passes. The release workflow tests and builds Windows x64, both macOS architectures, and Linux x64, then publishes the complete set of downloads and the signed updater manifest. Configure the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and, when applicable, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` before publishing the first update-enabled release. The private key must match the public key in `src-tauri/tauri.conf.json` and must never be committed.
 
 Build output goes to `src-tauri/target/` (or `CARGO_TARGET_DIR` when set). Executables are under `release/`; installers are under `release/bundle/`. Keep copies of packaged builds and other release files in the local **`releases/`** folder at the repository root. That folder and everything inside it are ignored by Git.
 

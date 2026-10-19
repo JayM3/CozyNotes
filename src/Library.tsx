@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open } from "@tauri-apps/plugin-shell";
 import { ArchiveRestore, ArrowRight, Check, Plus, Search, Settings as SettingsIcon, Star, StickyNote, Trash2, X } from "lucide-react";
-import { notesApi, paperColors } from "./api";
+import { notesApi, paperColors, sourceCodeUrl } from "./api";
 import { version } from "../package.json";
 import type { LibraryFilter, View } from "./api";
 import { Settings } from "./Settings";
@@ -20,6 +21,10 @@ type Confirmation = {
   clearSelectionOnSuccess?: boolean;
   refreshFromEvent?: boolean;
 };
+
+function GithubMark() {
+  return <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M12 .3a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.8 1.3 3.48.99.11-.77.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.29-1.23 3.29-1.23.65 1.66.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.6-2.8 5.62-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .3" /></svg>;
+}
 
 function errorText(error: unknown, fallback: string) {
   if (typeof error === "string" && error.trim()) return error;
@@ -332,7 +337,7 @@ export function Library() {
       </nav>
       <div className="rail-bottom">
         <button className={page === "settings" ? "nav-item active settings-nav" : "nav-item settings-nav"} aria-current={page === "settings" ? "page" : undefined} aria-label="Settings" title="Settings" onClick={() => navigate("settings")} disabled={controlsLocked}><SettingsIcon size={16} /> Settings</button>
-        <div className="rail-foot">v{version}</div>
+        <div className="rail-foot"><span>v{version}</span><button className="source-link" type="button" onClick={() => void open(sourceCodeUrl).catch(() => setActionError("Couldn't open Source code."))} title="Open Source code" aria-label="Open Source code"><GithubMark /><span className="source-label">Source code</span></button></div>
       </div>
     </aside>
     <section className="library-content">
@@ -354,7 +359,7 @@ export function Library() {
           <label className="select-all-control"><input ref={selectAllRef} type="checkbox" aria-label="Select all visible notes" aria-checked={someVisibleSelected ? "mixed" : allVisibleSelected} checked={allVisibleSelected} onChange={toggleAllVisible} disabled={selectionLocked} /><span>Select all</span></label>
           <button className="selection-clear" onClick={clearSelection} disabled={selectionLocked || selectedCount === 0}>Clear</button>
           {view === "notes"
-            ? <button className="selection-delete" onClick={() => void batchTrash()} disabled={selectionLocked || selectedCount === 0}><Trash2 size={15} /> Move to Trash</button>
+            ? <button className="selection-delete selection-trash" onClick={() => void batchTrash()} disabled={selectionLocked || selectedCount === 0}><Trash2 size={15} /> Move to Trash</button>
             : <button className="selection-delete" onClick={deleteSelected} disabled={selectionLocked || selectedCount === 0}><Trash2 size={15} /> Delete selected</button>}
         </div>}
         <div className="note-list" aria-busy={loading}>
