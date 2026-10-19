@@ -734,6 +734,105 @@ fn invalid_saves_never_modify_existing_rows() {
     }
 }
 
+fn ink_document() -> Value {
+    json!({"type":"doc","content":[{"type":"ink","attrs":{
+        "version":1,"width":600,"height":400,"description":"A blue flower","strokes":[
+            {"color":"#315e9e","width":4,"points":[
+                {"x":0.25,"y":0.5,"pressure":0.3,"tiltX":-30,"tiltY":15},
+                {"x":0.75,"y":0.6,"pressure":0.9,"tiltX":20,"tiltY":-10}
+            ]}
+        ]
+    }},{"type":"paragraph"}]})
+}
+
+#[test]
+fn ink_survives_saving_history_copying_trash_and_restart() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    let drawing = ink_document();
+    let note = insert_note(&connection, "ink", &drawing, "sage", 1, "Sketch").unwrap();
+    assert_eq!(note.plain_text, "[Ink: A blue flower]\n\n");
+    assert_eq!(
+        list_notes(&connection, false, "flower", None)
+            .unwrap()
+            .len(),
+        1
+    );
+    let mut erased = drawing.clone();
+    erased["content"][0]["attrs"]["strokes"] = json!([]);
+    save_document(&mut connection, "ink", 0, &erased, 2, None).unwrap();
+    let version = crate::history::get(&connection, "ink", 0).unwrap();
+    assert_eq!(version.document, drawing);
+    insert_note(
+        &connection,
+        "restored",
+        &version.document,
+        "sage",
+        3,
+        "Restored",
+    )
+    .unwrap();
+    insert_note(&connection, "copy", &erased, "sage", 3, "Copy").unwrap();
+    connection
+        .execute("UPDATE notes SET trashed_at=4 WHERE id='restored'", [])
+        .unwrap();
+    assert!(load_note(&connection, "restored", false).is_err());
+    assert_eq!(
+        load_note(&connection, "restored", true).unwrap().document,
+        Some(drawing.clone())
+    );
+    connection
+        .execute("UPDATE notes SET trashed_at=NULL WHERE id='restored'", [])
+        .unwrap();
+    drop(connection);
+    let connection = open_database(&root.database()).unwrap();
+    assert_eq!(
+        load_note(&connection, "restored", false).unwrap().document,
+        Some(drawing)
+    );
+    assert_eq!(
+        load_note(&connection, "copy", false).unwrap().document,
+        Some(erased)
+    );
+}
+
+#[test]
+fn invalid_ink_and_aggregate_limits_cannot_overwrite_notes_or_add_history() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    insert_note(&connection, "note", &doc("Original"), "cream", 1, "").unwrap();
+    let mut invalid = ink_document();
+    invalid["content"][0]["attrs"]["strokes"][0]["points"][0]["pressure"] = json!(1.1);
+    assert!(save_document(&mut connection, "note", 0, &invalid, 2, None).is_err());
+    let mut missing = ink_document();
+    missing["content"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("attrs");
+    assert!(document::validate(&missing).is_err());
+    let ink = &ink_document()["content"][0];
+    let too_many =
+        json!({"type":"doc","content":vec![ink.clone(); crate::ink::MAX_INK_DRAWINGS + 1]});
+    assert!(document::validate(&too_many).is_err());
+    let mut large = ink.clone();
+    let point = large["attrs"]["strokes"][0]["points"][0].clone();
+    large["attrs"]["strokes"][0]["points"] = json!(vec![point; 8192]);
+    large["attrs"]["strokes"] = json!(vec![large["attrs"]["strokes"][0].clone(); 6]);
+    let aggregate = json!({"type":"doc","content":[
+        large.clone(), {"type":"blockquote","content":[large.clone(), large]}
+    ]});
+    assert!(document::validate(&aggregate).is_err());
+    assert!(
+        crate::history::list(&connection, "note")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        load_note(&connection, "note", false).unwrap().document,
+        Some(doc("Original"))
+    );
+}
+
 #[test]
 fn hard_breaks_and_blocks_remain_separate_in_text_and_titles() {
     let document = json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"alpha"},{"type":"hardBreak"},{"type":"text","text":"beta"}]},{"type":"codeBlock","content":[{"type":"text","text":"gamma"}]},{"type":"paragraph","content":[{"type":"text","text":"delta"}]}]});

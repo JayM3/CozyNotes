@@ -3,6 +3,7 @@ mod desk;
 mod desktop;
 mod document;
 mod history;
+mod ink;
 mod operations;
 mod settings;
 mod snapping;

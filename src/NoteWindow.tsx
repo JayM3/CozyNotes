@@ -11,7 +11,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
-import { AArrowDown, AArrowUp, ArrowDown, ArrowUp, Bold, Check, CheckSquare, ChevronDown, ChevronUp, Copy, History, ImagePlus, Italic, List, MoreHorizontal, Plus, RotateCcw, Search, Star, Trash2, Underline as UnderlineIcon, X } from "lucide-react";
+import { AArrowDown, AArrowUp, ArrowDown, ArrowUp, Bold, Check, CheckSquare, ChevronDown, ChevronUp, Copy, History, ImagePlus, Italic, List, MoreHorizontal, PenLine, Plus, RotateCcw, Search, Star, Trash2, Underline as UnderlineIcon, X } from "lucide-react";
 import { notesApi, paperColors } from "./api";
 import type { Note, NoteDraft, PaperColor } from "./api";
 import { SaveCoordinator } from "./saveCoordinator";
@@ -28,6 +28,8 @@ import { CozyImage } from "./ImageNode";
 import { imageFiles, imageType, MAX_IMAGE_BYTES } from "./imageImport";
 import { NoteHistory } from "./NoteHistory";
 import { NoteToolbar } from "./NoteToolbar";
+import { CozyInk, InkEditingContext, insertInkDrawing } from "./InkNode";
+import { finishActiveInk } from "./inkSession";
 
 const readingSizes = [12, 14, 16, 18, 20, 24];
 export function NoteWindow({ id }: { id: string }) {
@@ -105,7 +107,7 @@ export function NoteWindow({ id }: { id: string }) {
   }, []);
 
   const editor = useEditor({
-    extensions: [StarterKit.configure({ underline: false, link: { openOnClick: false } }), Underline, TaskList, TaskItem.configure({ nested: true }), CozyImage, FindExtension],
+    extensions: [StarterKit.configure({ underline: false, link: { openOnClick: false } }), Underline, TaskList, TaskItem.configure({ nested: true }), CozyImage, CozyInk, FindExtension],
     content: { type: "doc", content: [{ type: "paragraph" }] },
     editable: false,
     enableContentCheck: true,
@@ -165,7 +167,7 @@ export function NoteWindow({ id }: { id: string }) {
       setTitle(value.explicitTitle);
       if (!value.document || value.documentError) throw new Error(value.documentError || "The saved document is unreadable.");
       editor.schema.nodeFromJSON(value.document).check();
-      editor.commands.setContent(value.document, { emitUpdate: false, errorOnInvalidContent: true });
+      editor.chain().setContent(value.document, { emitUpdate: false, errorOnInvalidContent: true }).setMeta("addToHistory", false).run();
       setFindTitle(editor, value.explicitTitle);
       coordinator.current = new SaveCoordinator({
         revision: value.revision,
@@ -208,7 +210,10 @@ export function NoteWindow({ id }: { id: string }) {
         if (cancelled) return;
         setLocked(value);
         if (titleInput.current) titleInput.current.readOnly = value || !coordinator.current;
-        if (value && editorRef.current && !editorRef.current.isDestroyed) editorRef.current.setEditable(false, false);
+        if (value && editorRef.current && !editorRef.current.isDestroyed) {
+          finishActiveInk(editorRef.current);
+          editorRef.current.setEditable(false, false);
+        }
       },
       flush: async () => { await coordinator.current?.flush(); },
       acknowledge: (operationId, success) => invoke<void>("ack_editor_operation", { operationId, success }),
@@ -248,6 +253,7 @@ export function NoteWindow({ id }: { id: string }) {
     actionInFlight.current = (async () => {
       try {
         await coordinator.current?.waitUntilCompositionEnds();
+        finishActiveInk(editorRef.current);
         if (editorRef.current && !editorRef.current.isDestroyed) editorRef.current.setEditable(false, false);
         if (titleInput.current) titleInput.current.readOnly = true;
         setLocked(true);
@@ -308,6 +314,9 @@ export function NoteWindow({ id }: { id: string }) {
   }, []);
   const command = (run: (current: Editor) => void) => { if (editor?.isEditable) { run(editor); editor.commands.focus(); } };
   const chooseImage = () => { if (editor?.isEditable) imageFileInput.current?.click(); };
+  const chooseInk = () => {
+    if (editor?.isEditable && !insertInkDrawing(editor)) setError("Couldn't add another ink drawing. This note can hold up to 64 drawings.");
+  };
   const changeColor = async (color: PaperColor) => {
     try { await notesApi.color(id, color); setNote(current => current ? { ...current, color } : current); }
     catch { setError("Couldn't change paper color."); }
@@ -389,6 +398,7 @@ export function NoteWindow({ id }: { id: string }) {
         <button className={`tool secondary-format ${state?.italic ? "active" : ""}`} disabled={!ready || locked} aria-label="Italic" title="Italic" aria-pressed={state?.italic ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleItalic().run())}><Italic size={16} /></button>
         <button className={`tool secondary-format ${state?.underline ? "active" : ""}`} disabled={!ready || locked} aria-label="Underline" title="Underline" aria-pressed={state?.underline ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleUnderline().run())}><UnderlineIcon size={16} /></button>
         <button className="tool" disabled={!ready || locked} aria-label="Insert image" title="Insert image" onMouseDown={event => event.preventDefault()} onClick={chooseImage}><ImagePlus size={16} /></button>
+        <button className="tool ink-insert" disabled={!ready || locked} aria-label="Insert ink drawing" title="Insert ink drawing" onMouseDown={event => event.preventDefault()} onClick={chooseInk}><PenLine size={16} /></button>
         <button className={`tool secondary-format ${state?.bullet ? "active" : ""}`} disabled={!ready || locked} aria-label="Bullet list" title="Bullet list" aria-pressed={state?.bullet ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleBulletList().run())}><List size={16} /></button>
         <button className={`tool secondary-format ${state?.task ? "active" : ""}`} disabled={!ready || locked} aria-label="Checklist" title="Checklist" aria-pressed={state?.task ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleTaskList().run())}><CheckSquare size={16} /></button>
       </div>
@@ -403,6 +413,7 @@ export function NoteWindow({ id }: { id: string }) {
           <button role="menuitem" disabled={!ready || locked} onClick={() => void openHistory()}><History size={15} /> Note history</button>
           <button role="menuitem" disabled={!ready || locked || !foldReady} onClick={() => void toggleFold()}><ChevronUp size={15} /> Fold note</button>
           <button role="menuitem" disabled={!ready || locked} onClick={openFind}><Search size={15} /> Find in note</button>
+          <button role="menuitem" data-editor-action disabled={!ready || locked} onClick={chooseInk}><PenLine size={15} /> Insert ink drawing</button>
           <button role="menuitem" data-editor-action disabled={!ready || locked || !state?.completed} onClick={() => command(resetCompletedTasks)}><RotateCcw size={15} /> Reset completed items</button>
           <button role="menuitem" disabled={!ready || locked} onClick={() => void duplicate()}><Copy size={15} /> Duplicate</button>
           <button role="menuitem" disabled={locked} onClick={() => void windowAction(notesApi.create, "Couldn't create a note.")}><Plus size={15} /> New note</button>
@@ -433,7 +444,7 @@ export function NoteWindow({ id }: { id: string }) {
     <input ref={imageFileInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp" multiple aria-label="Choose images" onChange={event => { void importImages(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
     <section className="note-body">
       {error && <div className="save-error" role="alert">{error}<div className="error-actions"><button onClick={() => void retry()}>Retry</button><button onClick={() => void copyDraft()}>{loadError ? "Copy available text" : "Copy draft"}</button></div></div>}
-      {loadError && note?.plainText ? <pre className="recovery-text">{note.plainText}</pre> : <EditorContent editor={editor} />}
+      {loadError && note?.plainText ? <pre className="recovery-text">{note.plainText}</pre> : <InkEditingContext.Provider value={ready && !locked}><EditorContent editor={editor} /></InkEditingContext.Provider>}
     </section>
     <footer className="note-footer" data-tauri-drag-region onMouseDown={startWindowDrag}><span className="visually-hidden" role="status" aria-live="polite">{saveStatus === "loading" ? "Loading note" : saveStatus === "saving" ? "Saving note" : saveStatus === "error" ? "Couldn't save note" : "Note saved"}</span><button className="tool fold-tool" aria-label="Fold note" title="Fold note" disabled={!ready || locked || !foldReady} onClick={() => void toggleFold()}><ChevronUp size={16} /></button><div className="reading-controls"><button aria-label="Decrease text size" title="Decrease text size" disabled={fontSize === 12} onClick={() => changeReadingSize(-1)}><AArrowDown size={16} /></button><button aria-label="Increase text size" title="Increase text size" disabled={fontSize === 24} onClick={() => changeReadingSize(1)}><AArrowUp size={16} /></button></div></footer>
     </div>

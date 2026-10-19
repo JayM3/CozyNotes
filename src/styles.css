@@ -105,6 +105,8 @@ h1 { margin: 0; color: var(--color-ink); font: 700 var(--text-heading)/1.1 var(-
 .note-window { display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; color: var(--color-ink); background: var(--paper-color, var(--color-paper)); }
 .note-toolbar { position: relative; display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; gap: var(--space-2); min-height: 88px; padding: 8px var(--space-2) 10px; border-bottom: 1px solid color-mix(in oklch, var(--color-ink) 15%, transparent); }
 .toolbar-group { display: grid; grid-template-columns: repeat(3, 34px); grid-template-rows: repeat(2, 34px); gap: 2px; flex: 0 0 auto; }
+@media (min-width: 366px) { .toolbar-group { grid-template-columns: repeat(4, 34px); } }
+@media (max-width: 365px) { .toolbar-group .ink-insert { display: none; } }
 .note-actions { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .note-actions .tool, .note-actions .popover { flex-basis: 30px; width: 30px; }
 .toolbar-resizer { position: absolute; inset: auto 0 0; height: 8px; cursor: ns-resize; touch-action: none; user-select: none; }
@@ -182,6 +184,26 @@ h1 { margin: 0; color: var(--color-ink); font: 700 var(--text-heading)/1.1 var(-
 .history-preview input[type="checkbox"] { pointer-events: none; }
 .history-back { display: flex; align-items: center; gap: var(--space-1); align-self: flex-start; min-height: 34px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-small); color: var(--color-accent-text); background: transparent; }
 .history-restore { flex: 0 0 auto; margin-top: var(--space-3); color: var(--color-accent-ink); border-color: var(--color-accent); background: var(--color-accent); }
+.ink-node { margin: 0 0 1em; border: 1px solid var(--color-rule); border-radius: var(--radius-small); overflow: hidden; background: var(--paper-color); font-size: var(--text-sm); line-height: 1.4; }
+.ink-node.ProseMirror-selectednode, .ProseMirror-selectednode > .ink-node { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.ink-heading { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 2px var(--space-2); font-weight: 600; }
+.ink-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); padding: 0 var(--space-2) var(--space-2); }
+.ink-controls .tool { flex: 0 0 30px; width: 30px; height: 30px; }
+.ink-setting { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-xs); }
+.ink-setting select { min-height: 30px; max-width: 90px; padding: 2px; border: 1px solid var(--color-rule); border-radius: 4px; background: var(--color-paper); color: var(--color-ink); font: inherit; }
+.ink-mouse { display: flex; align-items: center; gap: var(--space-1); min-height: 30px; font-size: var(--text-xs); }
+.ink-mouse input { width: 16px; height: 16px; margin: 0; accent-color: var(--color-accent); }
+.ink-paper { position: relative; width: 100%; background: #fffaf2; color: #675a4b; }
+.ink-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.is-erasing .ink-canvas { cursor: cell; }
+.ink-canvas:focus-visible { outline: 2px solid #315e9e; outline-offset: -3px; }
+.ink-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--space-3); text-align: center; font-size: var(--text-sm); pointer-events: none; }
+.ink-canvas[data-empty="false"] + .ink-empty { display: none; }
+.ink-hint, .ink-message, .ink-caption { margin: 0; padding: var(--space-1) var(--space-2); font-size: var(--text-xs); color: var(--color-secondary); }
+.ink-message:empty { display: none; }
+.ink-description { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1) var(--space-2) var(--space-2); font-size: var(--text-xs); }
+.ink-description input { width: 100%; min-width: 0; box-sizing: border-box; padding: var(--space-1); border: 1px solid var(--color-rule); border-radius: 4px; background: var(--color-paper); color: var(--color-ink); font: inherit; }
+.history-preview .ink-canvas { touch-action: auto; cursor: default; }
 .note-image-node { position: relative; display: block; width: 100%; min-height: 32px; margin: 0 0 1em; }
 .note-image-node img { display: block; max-width: 100%; height: auto; margin: 0 auto; cursor: zoom-in; }
 .note-image-node.is-zoomed { min-width: max-content; }

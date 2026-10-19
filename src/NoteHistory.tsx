@@ -5,12 +5,13 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { ArrowLeft, History, X } from "lucide-react";
 import { CozyImage } from "./ImageNode";
+import { CozyInk } from "./InkNode";
 import { notesApi } from "./api";
 import type { HistoryEntry, HistoryVersion } from "./api";
 
 function HistoryPreview({ version }: { version: HistoryVersion }) {
   const editor = useEditor({
-    extensions: [StarterKit.configure({ link: { openOnClick: false } }), TaskList, TaskItem.configure({ nested: true }), CozyImage],
+    extensions: [StarterKit.configure({ link: { openOnClick: false } }), TaskList, TaskItem.configure({ nested: true }), CozyImage, CozyInk],
     content: version.document,
     editable: false,
     editorProps: { attributes: { class: "note-editor", "aria-label": "Saved note content" } },

@@ -18,7 +18,13 @@ pub fn validate(document: &Value) -> Result<(), String> {
     if document.get("type").and_then(Value::as_str) != Some("doc") {
         return Err("The saved document is not a supported note document.".into());
     }
-    validate_node(document, 0)
+    validate_node(document, 0, &mut InkBudget::default())
+}
+
+#[derive(Default)]
+struct InkBudget {
+    drawings: usize,
+    points: usize,
 }
 
 fn kind(node: &Value) -> &str {
@@ -37,10 +43,11 @@ fn is_block(name: &str) -> bool {
             | "codeBlock"
             | "horizontalRule"
             | "image"
+            | "ink"
     )
 }
 
-fn validate_node(node: &Value, depth: usize) -> Result<(), String> {
+fn validate_node(node: &Value, depth: usize, ink: &mut InkBudget) -> Result<(), String> {
     let invalid = || "The saved document contains unsupported or invalid content.".to_string();
     if depth > 96 {
         return Err("The saved document is nested too deeply to open safely.".into());
@@ -84,7 +91,7 @@ fn validate_node(node: &Value, depth: usize) -> Result<(), String> {
                 .is_some_and(|child| kind(child) == "paragraph")
                 && content.iter().skip(1).all(|child| is_block(kind(child)))
         }
-        "text" | "hardBreak" | "horizontalRule" | "image" => content.is_empty(),
+        "text" | "hardBreak" | "horizontalRule" | "image" | "ink" => content.is_empty(),
         _ => false,
     };
     if !valid_children || (name == "doc" && depth != 0) {
@@ -105,7 +112,15 @@ fn validate_node(node: &Value, depth: usize) -> Result<(), String> {
         ("text", _) | (_, Some(_)) => return Err(invalid()),
         _ => {}
     }
-    if let Some(attrs) = object.get("attrs") {
+    if name == "ink" {
+        ink.drawings += 1;
+        ink.points += crate::ink::validate(object.get("attrs").ok_or_else(invalid)?)?;
+        if ink.drawings > crate::ink::MAX_INK_DRAWINGS
+            || ink.points > crate::ink::MAX_DOCUMENT_INK_POINTS
+        {
+            return Err("This note contains more ink than the supported limit.".into());
+        }
+    } else if let Some(attrs) = object.get("attrs") {
         let attrs = attrs.as_object().ok_or_else(invalid)?;
         for (key, value) in attrs {
             let valid = match (name, key.as_str()) {
@@ -163,7 +178,7 @@ fn validate_node(node: &Value, depth: usize) -> Result<(), String> {
         }
     }
     for child in content {
-        validate_node(child, depth + 1)?;
+        validate_node(child, depth + 1, ink)?;
     }
     Ok(())
 }
@@ -178,6 +193,18 @@ pub fn plain_text(document: &Value) -> String {
             }
             "hardBreak" => output.push('\n'),
             "image" => output.push_str("[Image]\n"),
+            "ink" => {
+                let description = node
+                    .get("attrs")
+                    .and_then(|attrs| attrs.get("description"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if description.trim().is_empty() {
+                    output.push_str("[Ink]\n");
+                } else {
+                    output.push_str(&format!("[Ink: {description}]\n"));
+                }
+            }
             _ => {
                 if let Some(children) = node.get("content").and_then(Value::as_array) {
                     for child in children {
