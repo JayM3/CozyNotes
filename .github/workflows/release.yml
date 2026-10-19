@@ -229,7 +229,7 @@ jobs:
             'release-x86_64-pc-windows-msvc': ['Cozynote.exe', `CozyNotes_${v}_windows_x64_setup.exe`, `CozyNotes_${v}_windows_x64_updater.exe`, `CozyNotes_${v}_windows_x64_updater.exe.sig`],
             'release-aarch64-apple-darwin': [`CozyNotes_${v}_macos_aarch64.dmg`, `CozyNotes_${v}_macos_aarch64_updater.app.tar.gz`, `CozyNotes_${v}_macos_aarch64_updater.app.tar.gz.sig`],
             'release-x86_64-apple-darwin': [`CozyNotes_${v}_macos_x64.dmg`, `CozyNotes_${v}_macos_x64_updater.app.tar.gz`, `CozyNotes_${v}_macos_x64_updater.app.tar.gz.sig`],
-            'release-x86_64-unknown-linux-gnu': [`CozyNotes_${v}_linux_x64.AppImage`, `CozyNotes_${v}_linux_x64.AppImage.sig`, `CozyNotes_${v}_linux_x64.deb`, `CozyNotes_${v}_linux_x64_updater.AppImage`, `CozyNotes_${v}_linux_x64_updater.AppImage.sig`],
+            'release-x86_64-unknown-linux-gnu': [`CozyNotes_${v}_linux_x64.AppImage`, `CozyNotes_${v}_linux_x64.deb`, `CozyNotes_${v}_linux_x64_updater.AppImage`, `CozyNotes_${v}_linux_x64_updater.AppImage.sig`],
           };
           const actualArtifacts = readdirSync('release-artifacts').sort();
           if (JSON.stringify(actualArtifacts) !== JSON.stringify(Object.keys(artifacts).sort())) {
