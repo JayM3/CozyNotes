@@ -167,8 +167,8 @@ jobs:
       - name: Download Windows packages
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: release-*
-          path: release-artifacts
+          name: release-x86_64-pc-windows-msvc
+          path: release-artifacts/release-x86_64-pc-windows-msvc
 
       - name: Verify complete asset set and generate checksums
         shell: bash
