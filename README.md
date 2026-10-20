@@ -14,7 +14,7 @@ Windows x64 is the current development, testing, and release target. macOS and L
 
 See the [Windows support scope and verification record](docs/2026-10-19-windows-support.md) for the delivery changes and local checks.
 
-**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.6
+**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.7
 
 - Rich text, checklists, images, ink drawings, and autosave.
 - Colored paper, light and dark themes, and favorites.
@@ -25,7 +25,7 @@ See the [Windows support scope and verification record](docs/2026-10-19-windows-
 <summary>Features</summary>
 
 - **Writing:** Rich text, bullet lists, resettable checklists, and local images added by paste, drop, or file picker. Fonts are bundled locally.
-- **Ink drawings:** Write directly on the note body with a Windows pen, alongside typed text. The pen button opens **Drawing tools** with four colors, three widths, a stroke eraser, undo/redo, and optional **Draw with mouse**. Fingers scroll; ordinary mouse input edits text. Drawing descriptions are searchable, and ink remains editable after saving, duplicating, or restoring history. Existing inline ink drawings are preserved.
+- **Ink drawings:** Write directly on the note body with a Windows pen, alongside typed text. The pen button opens **Drawing tools** with four colors, three widths, a stroke eraser, undo/redo, and optional **Draw with mouse**. Fingers scroll; ordinary mouse input edits text. Ink remains editable after saving, duplicating, or restoring history. Existing inline ink drawings are preserved.
 - **Organization:** Library search, in-note find, paper-color filters, favorites, duplication, and bulk Trash actions. Favorites appear first; the Favorites only filter combines with search and paper colors.
 - **Appearance:** Cream, Butter, Sage, Rose, Lavender, or Mist paper, with Warm, Night, or System themes shared across windows.
 - **Windows:** Independent notes with autosave, folding, and remembered sizes and toolbar heights. New notes start at 305 by 385. On Windows, notes snap to desktop edges and neighboring notes, including matching a neighbor's size.

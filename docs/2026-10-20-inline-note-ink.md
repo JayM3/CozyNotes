@@ -4,7 +4,7 @@ Recorded October 20, 2026. Windows x64 implementation on branch `inline-note-ink
 
 ## Behavior
 
-A pen draws immediately on the note body without inserting an ink attachment. Mouse clicks still place the text cursor, select text, and operate checklists; fingers scroll. The pen button opens drawing tools: four colors, three widths, whole-stroke erasing, undo/redo, clear ink, optional description, and a Draw with mouse checkbox. Closing the tools preserves the selected input mode. Existing inline ink attachments remain editable.
+A pen draws immediately on the note body without inserting an ink attachment. Mouse clicks still place the text cursor, select text, and operate checklists; fingers scroll. The pen button opens drawing tools: four colors, three widths, whole-stroke erasing, undo/redo, clear ink, and a Draw with mouse checkbox. Closing the tools preserves the selected input mode. Existing inline ink attachments remain editable.
 
 Typed text and ink coexist. Strokes use paper coordinates independent of window size and text reading size, and move with the note when it scrolls. Narrowing the note preserves drawing coordinates and allows overflow within the note body. Changing or reflowing text does not attach strokes to words. Night theme adapts stroke display while retaining stored colors.
 
@@ -14,7 +14,7 @@ The drawing area is bounded to 4,096 by 4,096 CSS pixels from the note body's or
 
 `CozyDocument` stores optional versioned vector ink in the root document's `attrs.ink`. Rust validates it with the existing strict ink validator and shared aggregate limits. Text-only documents omit the attribute, including after clearing ink, preserving their earlier format. No database schema migration or IPC permission is needed. Older app versions cannot edit documents with note-level ink; their existing recovery checks prevent overwriting unsupported content.
 
-Completed strokes are normal TipTap document transactions with one undo event per gesture. Wet ink is finished synchronously by the existing save/close barrier. Blur, visibility changes, cancellation, lost capture, scrolling, and resizing also commit interrupted strokes. Autosave, revision checks, history, duplication, Trash, and restoration retain ink with text. Drawing descriptions participate in recovery text and library search.
+Completed strokes are normal TipTap document transactions with one undo event per gesture. Wet ink is finished synchronously by the existing save/close barrier. Blur, visibility changes, cancellation, lost capture, scrolling, and resizing also commit interrupted strokes. Autosave, revision checks, history, duplication, Trash, and restoration retain ink with text. Descriptions already saved on older drawings remain in recovery text and library search.
 
 `loadNoteDocument` explicitly restores root attributes: TipTap's `setContent` replaces the document fragment but does not restore root attributes. This was caught by native close/reopen verification and is regression-tested. Loading does not emit an edit or create an undo step.
 

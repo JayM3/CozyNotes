@@ -212,8 +212,6 @@ h1 { margin: 0; color: var(--color-ink); font: 700 var(--text-heading)/1.1 var(-
 .ink-canvas[data-empty="false"] + .ink-empty { display: none; }
 .ink-hint, .ink-message, .ink-caption { margin: 0; padding: var(--space-1) var(--space-2); font-size: var(--text-xs); color: var(--color-secondary); }
 .ink-message:empty { display: none; }
-.ink-description { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1) var(--space-2) var(--space-2); font-size: var(--text-xs); }
-.ink-description input { width: 100%; min-width: 0; box-sizing: border-box; padding: var(--space-1); border: 1px solid var(--color-rule); border-radius: 4px; background: var(--color-paper); color: var(--color-ink); font: inherit; }
 .history-preview .ink-canvas { touch-action: auto; cursor: default; }
 .note-image-node { position: relative; display: block; width: 100%; min-height: 32px; margin: 0 0 1em; }
 .note-image-node img { display: block; max-width: 100%; height: auto; margin: 0 auto; cursor: zoom-in; }

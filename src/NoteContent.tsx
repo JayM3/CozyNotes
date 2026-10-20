@@ -65,8 +65,5 @@ export function NoteDrawingTools({ editor, disabled, tools, onChange, onClose }:
       <label className="ink-mouse"><input type="checkbox" disabled={disabled} checked={tools.mouse} onChange={event => change({ mouse: event.target.checked })} /> Draw with mouse</label>
       <button type="button" className="tool" aria-label="Close drawing tools" title="Close drawing tools" onClick={() => { finishActiveInk(editor); onClose(); }}><X size={16} /></button>
     </div>
-    {state?.drawing && <label className="ink-description">Drawing description<input disabled={disabled} value={state.drawing.description} maxLength={240} placeholder="Optional: describe your drawing" onChange={event => action(() => {
-      if (editor) commitNoteInk(editor, { ...editor.state.doc.attrs.ink, description: event.target.value });
-    })} /></label>}
   </div>;
 }

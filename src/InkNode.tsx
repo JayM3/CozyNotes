@@ -301,8 +301,7 @@ function InkNodeView({ node, editor, getPos, deleteNode }: NodeViewProps) {
       <label className="ink-mouse"><input type="checkbox" checked={mouse} onChange={event => action(() => setMouse(event.target.checked))} /> Draw with mouse</label>
     </div>}
     <InkCanvas drawing={drawing} tool={tool} color={color} width={width} mouse={mouse} editable={editing} canEdit={canEdit} remainingPoints={remainingPoints} onCommit={onCommit} registerFinish={registerFinish} />
-    {editing ? <label className="ink-description">Drawing description<input value={drawing.description} maxLength={240} placeholder="Optional: describe your drawing" onChange={event => { if (canEdit()) commit({ description: event.target.value }); }} /></label>
-      : drawing.description && <p className="ink-caption">{drawing.description}</p>}
+    {!editing && drawing.description && <p className="ink-caption">{drawing.description}</p>}
   </NodeViewWrapper>;
 }
 

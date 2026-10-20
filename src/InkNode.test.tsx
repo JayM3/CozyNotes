@@ -178,9 +178,8 @@ describe("ink in the note editor", () => {
     rerender(<InkEditingContext.Provider value><EditorContent editor={editor} /></InkEditingContext.Provider>);
     expect(await screen.findByRole("group", { name: "Drawing tools" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "Ink drawing" }).getAttribute("tabindex")).toBe("0");
+    expect(screen.queryByLabelText("Drawing description")).toBeNull();
     expect(editor.can().undo()).toBe(false);
-    fireEvent.change(screen.getByLabelText("Drawing description"), { target: { value: "A flower" } });
-    expect(editor.getText()).toContain("[Ink: A flower]");
     fireEvent.click(screen.getByRole("button", { name: "Delete ink drawing" }));
     expect(editor.getJSON().content?.every(node => node.type !== "ink")).toBe(true);
     act(() => { editor.commands.undo(); });

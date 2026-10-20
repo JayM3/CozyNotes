@@ -208,17 +208,17 @@ describe("drawing on the note textbox", () => {
     expect(documentInkUsage(editor.state.doc).points).toBeGreaterThan(0);
   });
 
-  it("clears ink with an undoable tool action and retains the note text", () => {
+  it("clears ink with an undoable tool action without exposing a description field", () => {
     const { editor, textbox } = note();
     draw(textbox);
     render(<NoteDrawingTools editor={editor} disabled={false} tools={defaultNoteInkTools} onChange={vi.fn()} onClose={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText("Drawing description"), { target: { value: "A flower" } });
-    expect(editor.state.doc.attrs.ink.description).toBe("A flower");
+    expect(screen.queryByLabelText("Drawing description")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Clear note ink" }));
     expect(editor.state.doc.attrs.ink).toBeNull();
     expect(editor.getText()).toBe("Typed text");
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    expect(editor.state.doc.attrs.ink.description).toBe("A flower");
+    expect(editor.state.doc.attrs.ink.strokes).toHaveLength(1);
+    expect(editor.state.doc.attrs.ink.description).toBe("");
   });
 
   it("shares drawing and point budgets with legacy ink instead of bypassing note limits", () => {
