@@ -27,6 +27,19 @@ struct InkBudget {
     points: usize,
 }
 
+impl InkBudget {
+    fn add(&mut self, drawing: &Value) -> Result<(), String> {
+        self.drawings += 1;
+        self.points += crate::ink::validate(drawing)?;
+        if self.drawings > crate::ink::MAX_INK_DRAWINGS
+            || self.points > crate::ink::MAX_DOCUMENT_INK_POINTS
+        {
+            return Err("This note contains more ink than the supported limit.".into());
+        }
+        Ok(())
+    }
+}
+
 fn kind(node: &Value) -> &str {
     node.get("type").and_then(Value::as_str).unwrap_or("")
 }
@@ -113,17 +126,17 @@ fn validate_node(node: &Value, depth: usize, ink: &mut InkBudget) -> Result<(), 
         _ => {}
     }
     if name == "ink" {
-        ink.drawings += 1;
-        ink.points += crate::ink::validate(object.get("attrs").ok_or_else(invalid)?)?;
-        if ink.drawings > crate::ink::MAX_INK_DRAWINGS
-            || ink.points > crate::ink::MAX_DOCUMENT_INK_POINTS
-        {
-            return Err("This note contains more ink than the supported limit.".into());
-        }
+        ink.add(object.get("attrs").ok_or_else(invalid)?)?;
     } else if let Some(attrs) = object.get("attrs") {
         let attrs = attrs.as_object().ok_or_else(invalid)?;
         for (key, value) in attrs {
             let valid = match (name, key.as_str()) {
+                ("doc", "ink") => {
+                    if !value.is_null() {
+                        ink.add(value)?;
+                    }
+                    true
+                }
                 ("heading", "level") => {
                     value.as_u64().is_some_and(|level| (1..=6).contains(&level))
                 }
@@ -209,6 +222,21 @@ pub fn plain_text(document: &Value) -> String {
                 if let Some(children) = node.get("content").and_then(Value::as_array) {
                     for child in children {
                         append(child, output);
+                    }
+                }
+                if kind(node) == "doc"
+                    && let Some(ink) = node.get("attrs").and_then(|attrs| attrs.get("ink"))
+                    && !ink.is_null()
+                {
+                    let description = ink.get("description").and_then(Value::as_str).unwrap_or("");
+                    let has_strokes = ink
+                        .get("strokes")
+                        .and_then(Value::as_array)
+                        .is_some_and(|strokes| !strokes.is_empty());
+                    if !description.trim().is_empty() {
+                        output.push_str(&format!("[Ink: {description}]\n"));
+                    } else if has_strokes {
+                        output.push_str("[Ink]\n");
                     }
                 }
                 if matches!(

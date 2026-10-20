@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
+import { useEditor, useEditorState } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
 import type { SelectionBookmark } from "@tiptap/pm/state";
 import { TextSelection } from "@tiptap/pm/state";
@@ -28,8 +28,10 @@ import { CozyImage } from "./ImageNode";
 import { imageFiles, imageType, MAX_IMAGE_BYTES } from "./imageImport";
 import { NoteHistory } from "./NoteHistory";
 import { NoteToolbar } from "./NoteToolbar";
-import { CozyInk, InkEditingContext, insertInkDrawing } from "./InkNode";
+import { CozyInk, InkEditingContext } from "./InkNode";
 import { finishActiveInk } from "./inkSession";
+import { CozyDocument, getNoteDocument, loadNoteDocument } from "./noteInk";
+import { defaultNoteInkTools, NoteContent, NoteDrawingTools } from "./NoteContent";
 
 const readingSizes = [12, 14, 16, 18, 20, 24];
 export function NoteWindow({ id }: { id: string }) {
@@ -48,6 +50,8 @@ export function NoteWindow({ id }: { id: string }) {
   const [fontSize, setFontSize] = useState(16);
   const [findOpen, setFindOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [drawingToolsOpen, setDrawingToolsOpen] = useState(false);
+  const [inkTools, setInkTools] = useState(defaultNoteInkTools);
   const [folded, setFolded] = useState(false);
   const [foldReady, setFoldReady] = useState(false);
   const unfoldButton = useRef<HTMLButtonElement>(null);
@@ -107,7 +111,7 @@ export function NoteWindow({ id }: { id: string }) {
   }, []);
 
   const editor = useEditor({
-    extensions: [StarterKit.configure({ underline: false, link: { openOnClick: false } }), Underline, TaskList, TaskItem.configure({ nested: true }), CozyImage, CozyInk, FindExtension],
+    extensions: [StarterKit.configure({ document: false, underline: false, link: { openOnClick: false } }), CozyDocument, Underline, TaskList, TaskItem.configure({ nested: true }), CozyImage, CozyInk, FindExtension],
     content: { type: "doc", content: [{ type: "paragraph" }] },
     editable: false,
     enableContentCheck: true,
@@ -134,7 +138,7 @@ export function NoteWindow({ id }: { id: string }) {
         return true;
       },
     },
-    onUpdate: ({ editor: updated }) => coordinator.current?.markDirty({ document: updated.getJSON(), explicitTitle: titleValue.current }),
+    onUpdate: ({ editor: updated }) => coordinator.current?.markDirty({ document: getNoteDocument(updated), explicitTitle: titleValue.current }),
     onBlur: () => { void coordinator.current?.flush().catch(() => undefined); },
     onTransaction: ({ transaction }) => { if (bookmark.current && transaction.docChanged) bookmark.current = bookmark.current.map(transaction.mapping); },
   });
@@ -166,8 +170,7 @@ export function NoteWindow({ id }: { id: string }) {
       titleValue.current = value.explicitTitle;
       setTitle(value.explicitTitle);
       if (!value.document || value.documentError) throw new Error(value.documentError || "The saved document is unreadable.");
-      editor.schema.nodeFromJSON(value.document).check();
-      editor.chain().setContent(value.document, { emitUpdate: false, errorOnInvalidContent: true }).setMeta("addToHistory", false).run();
+      loadNoteDocument(editor, value.document);
       setFindTitle(editor, value.explicitTitle);
       coordinator.current = new SaveCoordinator({
         revision: value.revision,
@@ -314,9 +317,7 @@ export function NoteWindow({ id }: { id: string }) {
   }, []);
   const command = (run: (current: Editor) => void) => { if (editor?.isEditable) { run(editor); editor.commands.focus(); } };
   const chooseImage = () => { if (editor?.isEditable) imageFileInput.current?.click(); };
-  const chooseInk = () => {
-    if (editor?.isEditable && !insertInkDrawing(editor)) setError("Couldn't add another ink drawing. This note can hold up to 64 drawings.");
-  };
+  const toggleDrawingTools = () => { finishActiveInk(editor); setDrawingToolsOpen(value => !value); };
   const changeColor = async (color: PaperColor) => {
     try { await notesApi.color(id, color); setNote(current => current ? { ...current, color } : current); }
     catch { setError("Couldn't change paper color."); }
@@ -351,7 +352,7 @@ export function NoteWindow({ id }: { id: string }) {
     titleValue.current = value;
     setTitle(value);
     setFindTitle(editor, value);
-    coordinator.current.markDirty({ document: editor.getJSON(), explicitTitle: value });
+    coordinator.current.markDirty({ document: getNoteDocument(editor), explicitTitle: value });
   };
   const changeReadingSize = (direction: number) => setFontSize(value => readingSizes[Math.max(0, Math.min(readingSizes.length - 1, readingSizes.indexOf(value) + direction))]);
 
@@ -396,9 +397,9 @@ export function NoteWindow({ id }: { id: string }) {
       <div className="toolbar-group" role="group" aria-label="Text formatting" data-tauri-drag-region>
         <button className={`tool ${state?.bold ? "active" : ""}`} disabled={!ready || locked} aria-label="Bold" title="Bold" aria-pressed={state?.bold ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleBold().run())}><Bold size={16} /></button>
         <button className={`tool secondary-format ${state?.italic ? "active" : ""}`} disabled={!ready || locked} aria-label="Italic" title="Italic" aria-pressed={state?.italic ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleItalic().run())}><Italic size={16} /></button>
-        <button className={`tool secondary-format ${state?.underline ? "active" : ""}`} disabled={!ready || locked} aria-label="Underline" title="Underline" aria-pressed={state?.underline ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleUnderline().run())}><UnderlineIcon size={16} /></button>
+        <button className={`tool secondary-format compact-underline ${state?.underline ? "active" : ""}`} disabled={!ready || locked} aria-label="Underline" title="Underline" aria-pressed={state?.underline ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleUnderline().run())}><UnderlineIcon size={16} /></button>
         <button className="tool" disabled={!ready || locked} aria-label="Insert image" title="Insert image" onMouseDown={event => event.preventDefault()} onClick={chooseImage}><ImagePlus size={16} /></button>
-        <button className="tool ink-insert" disabled={!ready || locked} aria-label="Insert ink drawing" title="Insert ink drawing" onMouseDown={event => event.preventDefault()} onClick={chooseInk}><PenLine size={16} /></button>
+        <button className={`tool${drawingToolsOpen ? " active" : ""}`} disabled={!ready || locked} aria-label="Drawing tools" title="Drawing tools" aria-expanded={drawingToolsOpen} aria-controls="note-drawing-tools" onMouseDown={event => event.preventDefault()} onClick={toggleDrawingTools}><PenLine size={16} /></button>
         <button className={`tool secondary-format ${state?.bullet ? "active" : ""}`} disabled={!ready || locked} aria-label="Bullet list" title="Bullet list" aria-pressed={state?.bullet ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleBulletList().run())}><List size={16} /></button>
         <button className={`tool secondary-format ${state?.task ? "active" : ""}`} disabled={!ready || locked} aria-label="Checklist" title="Checklist" aria-pressed={state?.task ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleTaskList().run())}><CheckSquare size={16} /></button>
       </div>
@@ -413,7 +414,7 @@ export function NoteWindow({ id }: { id: string }) {
           <button role="menuitem" disabled={!ready || locked} onClick={() => void openHistory()}><History size={15} /> Note history</button>
           <button role="menuitem" disabled={!ready || locked || !foldReady} onClick={() => void toggleFold()}><ChevronUp size={15} /> Fold note</button>
           <button role="menuitem" disabled={!ready || locked} onClick={openFind}><Search size={15} /> Find in note</button>
-          <button role="menuitem" data-editor-action disabled={!ready || locked} onClick={chooseInk}><PenLine size={15} /> Insert ink drawing</button>
+          <button role="menuitem" data-editor-action disabled={!ready || locked} onClick={toggleDrawingTools}><PenLine size={15} /> Drawing tools</button>
           <button role="menuitem" data-editor-action disabled={!ready || locked || !state?.completed} onClick={() => command(resetCompletedTasks)}><RotateCcw size={15} /> Reset completed items</button>
           <button role="menuitem" disabled={!ready || locked} onClick={() => void duplicate()}><Copy size={15} /> Duplicate</button>
           <button role="menuitem" disabled={locked} onClick={() => void windowAction(notesApi.create, "Couldn't create a note.")}><Plus size={15} /> New note</button>
@@ -444,7 +445,8 @@ export function NoteWindow({ id }: { id: string }) {
     <input ref={imageFileInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp" multiple aria-label="Choose images" onChange={event => { void importImages(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
     <section className="note-body">
       {error && <div className="save-error" role="alert">{error}<div className="error-actions"><button onClick={() => void retry()}>Retry</button><button onClick={() => void copyDraft()}>{loadError ? "Copy available text" : "Copy draft"}</button></div></div>}
-      {loadError && note?.plainText ? <pre className="recovery-text">{note.plainText}</pre> : <InkEditingContext.Provider value={ready && !locked}><EditorContent editor={editor} /></InkEditingContext.Provider>}
+      {drawingToolsOpen && <NoteDrawingTools editor={editor} disabled={!ready || locked} tools={inkTools} onChange={setInkTools} onClose={() => { setDrawingToolsOpen(false); editor?.commands.focus(); }} />}
+      {loadError && note?.plainText ? <pre className="recovery-text">{note.plainText}</pre> : <InkEditingContext.Provider value={ready && !locked}><NoteContent editor={editor} editable={ready && !locked} tools={inkTools} /></InkEditingContext.Provider>}
     </section>
     <footer className="note-footer" data-tauri-drag-region onMouseDown={startWindowDrag}><span className="visually-hidden" role="status" aria-live="polite">{saveStatus === "loading" ? "Loading note" : saveStatus === "saving" ? "Saving note" : saveStatus === "error" ? "Couldn't save note" : "Note saved"}</span><button className="tool fold-tool" aria-label="Fold note" title="Fold note" disabled={!ready || locked || !foldReady} onClick={() => void toggleFold()}><ChevronUp size={16} /></button><div className="reading-controls"><button aria-label="Decrease text size" title="Decrease text size" disabled={fontSize === 12} onClick={() => changeReadingSize(-1)}><AArrowDown size={16} /></button><button aria-label="Increase text size" title="Increase text size" disabled={fontSize === 24} onClick={() => changeReadingSize(1)}><AArrowUp size={16} /></button></div></footer>
     </div>

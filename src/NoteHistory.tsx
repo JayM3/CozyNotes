@@ -1,22 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { ArrowLeft, History, X } from "lucide-react";
 import { CozyImage } from "./ImageNode";
 import { CozyInk } from "./InkNode";
+import { CozyDocument } from "./noteInk";
+import { NoteContent } from "./NoteContent";
 import { notesApi } from "./api";
 import type { HistoryEntry, HistoryVersion } from "./api";
 
 function HistoryPreview({ version }: { version: HistoryVersion }) {
   const editor = useEditor({
-    extensions: [StarterKit.configure({ link: { openOnClick: false } }), TaskList, TaskItem.configure({ nested: true }), CozyImage, CozyInk],
+    extensions: [StarterKit.configure({ document: false, link: { openOnClick: false } }), CozyDocument, TaskList, TaskItem.configure({ nested: true }), CozyImage, CozyInk],
     content: version.document,
     editable: false,
     editorProps: { attributes: { class: "note-editor", "aria-label": "Saved note content" } },
   }, [version.revision]);
-  return <div className={`history-preview paper-${version.color}`}><h3>{version.title}</h3><EditorContent editor={editor} /></div>;
+  return <div className={`history-preview paper-${version.color}`}><h3>{version.title}</h3><NoteContent editor={editor} /></div>;
 }
 
 export function NoteHistory({ id, onClose, onRestore }: {

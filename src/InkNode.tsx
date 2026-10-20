@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, RefObject } from "react";
 import { Node, mergeAttributes } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
 import { NodeViewWrapper, ReactNodeViewRenderer, useEditorState } from "@tiptap/react";
@@ -8,12 +8,14 @@ import { Eraser, PenLine, Redo2, Trash2, Undo2 } from "lucide-react";
 import { emptyInk, inkColors, inkPoint, isInkDrawing, MAX_DOCUMENT_INK_POINTS, MAX_DRAWING_POINTS, MAX_INK_DRAWINGS, MAX_INK_STROKES, MAX_STROKE_POINTS, paintStroke, pointCount, strokeHitsEraser } from "./ink";
 import type { InkDrawing, InkPoint, InkStroke } from "./ink";
 import { finishActiveInk, registerInkSession } from "./inkSession";
+import { documentInkUsage } from "./noteInk";
 
 // Tauri's save barrier changes editability without emitting a document update.
 export const InkEditingContext = createContext<boolean | null>(null);
 
 type ActiveStroke = {
   pointerId: number;
+  target: HTMLElement;
   rect: DOMRect;
   erase: boolean;
   original: InkStroke[];
@@ -34,6 +36,9 @@ type CanvasProps = {
   remainingPoints: () => number;
   onCommit: (strokes: InkStroke[]) => boolean;
   registerFinish: (finish: () => void) => () => void;
+  // Note ink listens above the textbox so mouse selection and finger scrolling
+  // still reach the editor. The transparent canvas itself never takes input.
+  surface?: RefObject<HTMLDivElement | null>;
 };
 
 export function InkCanvas(props: CanvasProps) {
@@ -62,7 +67,7 @@ export function InkCanvas(props: CanvasProps) {
     if (!element) return;
     const rect = element.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
-    const ratio = Math.min(window.devicePixelRatio || 1, 3);
+    const ratio = Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(8_000_000 / (rect.width * rect.height)));
     element.width = Math.round(rect.width * ratio);
     element.height = Math.round(rect.height * ratio);
     const buffer = base.current ??= document.createElement("canvas");
@@ -70,7 +75,7 @@ export function InkCanvas(props: CanvasProps) {
     const context = buffer.getContext("2d");
     if (!context) return;
     const drawing = committed.current;
-    context.setTransform(buffer.width / drawing.width, 0, 0, buffer.height / drawing.height, 0, 0);
+    context.setTransform(buffer.width / (latest.current.surface ? rect.width : drawing.width), 0, 0, buffer.height / (latest.current.surface ? rect.height : drawing.height), 0, 0);
     drawing.strokes.forEach(stroke => paintStroke(context, stroke, drawing.width, drawing.height));
     paint.current();
   }, []);
@@ -83,7 +88,9 @@ export function InkCanvas(props: CanvasProps) {
     context.clearRect(0, 0, element.width, element.height);
     const drawing = committed.current, gesture = active.current;
     if (!gesture?.erase) context.drawImage(buffer, 0, 0);
-    context.setTransform(element.width / drawing.width, 0, 0, element.height / drawing.height, 0, 0);
+    const rect = element.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    context.setTransform(element.width / (latest.current.surface ? rect.width : drawing.width), 0, 0, element.height / (latest.current.surface ? rect.height : drawing.height), 0, 0);
     if (gesture?.erase) gesture.strokes.forEach(stroke => paintStroke(context, stroke, drawing.width, drawing.height));
     else if (gesture) paintStroke(context, gesture.stroke, drawing.width, drawing.height);
     element.dataset.empty = String(!(gesture ? gesture.strokes.length + (gesture.erase ? 0 : 1) : drawing.strokes.length));
@@ -96,10 +103,9 @@ export function InkCanvas(props: CanvasProps) {
     const next = gesture.erase ? gesture.strokes : [...gesture.strokes, gesture.stroke];
     if (!gesture.erase || next.length !== gesture.original.length) {
       if (latest.current.onCommit(next)) committed.current = { ...committed.current, strokes: next };
-      else setMessage("This drawing is full. Add another ink drawing to continue.");
+      else setMessage(latest.current.surface ? "This note has reached its drawing limit. Start a new note to keep drawing." : "This drawing is full. Add another ink drawing to continue.");
     }
-    const element = canvas.current;
-    if (element?.hasPointerCapture(gesture.pointerId)) element.releasePointerCapture(gesture.pointerId);
+    if (gesture.target.hasPointerCapture(gesture.pointerId)) gesture.target.releasePointerCapture(gesture.pointerId);
     rebuildBase();
     schedulePaint();
   }, [rebuildBase]);
@@ -107,21 +113,24 @@ export function InkCanvas(props: CanvasProps) {
   useEffect(() => props.registerFinish(finish), [props.registerFinish, finish]);
   useLayoutEffect(rebuildBase, [props.drawing, rebuildBase]);
   useEffect(() => {
-    const resize = new ResizeObserver(() => { finish(); rebuildBase(); });
-    if (canvas.current) resize.observe(canvas.current);
+    const resize = typeof ResizeObserver === "function" ? new ResizeObserver(() => { finish(); rebuildBase(); }) : null;
+    if (resize && canvas.current) resize.observe(canvas.current);
     const onBlur = () => finish();
+    const onResize = () => { finish(); rebuildBase(); };
     const onHidden = () => { if (document.hidden) finish(); };
-    window.addEventListener("resize", rebuildBase);
+    window.addEventListener("resize", onResize);
+    if (props.surface) window.addEventListener("scroll", onBlur, true);
     window.addEventListener("blur", onBlur);
     document.addEventListener("visibilitychange", onHidden);
     return () => {
-      resize.disconnect();
-      window.removeEventListener("resize", rebuildBase);
+      resize?.disconnect();
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onBlur, true);
       window.removeEventListener("blur", onBlur);
       document.removeEventListener("visibilitychange", onHidden);
       if (frame.current !== null) cancelAnimationFrame(frame.current);
     };
-  }, [rebuildBase, finish]);
+  }, [rebuildBase, finish, props.surface]);
 
   const sample = (event: PointerEvent, includeRelease = false) => {
     const gesture = active.current;
@@ -133,11 +142,11 @@ export function InkCanvas(props: CanvasProps) {
       // Pointer-up pressure is zero; retain the last contact pressure.
       if (includeRelease && !item.pressure) point.pressure = gesture.last.pressure;
       if (gesture.erase) {
-        const radius = 10 * drawing.width / gesture.rect.width;
+        const radius = latest.current.surface ? 10 : 10 * drawing.width / gesture.rect.width;
         gesture.strokes = gesture.strokes.filter(stroke => !strokeHitsEraser(stroke, gesture.last, point, drawing.width, drawing.height, radius));
       } else if (Math.hypot((point.x - gesture.last.x) * drawing.width, (point.y - gesture.last.y) * drawing.height) >= 0.5) {
         if (gesture.stroke.points.length >= gesture.budget) {
-          setMessage("Stroke limit reached. Lift your pen to continue, or add another ink drawing.");
+          setMessage(latest.current.surface ? "Stroke limit reached. Lift your pen to continue." : "Stroke limit reached. Lift your pen to continue, or add another ink drawing.");
           finish();
           return;
         }
@@ -148,36 +157,92 @@ export function InkCanvas(props: CanvasProps) {
     schedulePaint();
   };
 
-  const start = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!props.canEdit() || active.current || event.pointerType === "touch"
-      || (event.pointerType !== "pen" && !(props.mouse && event.pointerType === "mouse"))
+  const start = (event: PointerEvent, target: HTMLElement) => {
+    const current = latest.current;
+    if (!current.canEdit() || active.current || event.pointerType === "touch"
+      || (event.pointerType !== "pen" && !(current.mouse && event.pointerType === "mouse"))
       || (event.button !== 0 && !(event.pointerType === "pen" && event.button === 5))) return;
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = canvas.current?.getBoundingClientRect();
+    if (!rect) return;
     if (!rect.width || !rect.height) return;
-    const erase = props.tool === "eraser" || (event.buttons & 32) !== 0 || event.button === 5;
+    const erase = current.tool === "eraser" || (event.buttons & 32) !== 0 || event.button === 5;
     const drawing = committed.current;
-    const budget = Math.min(MAX_STROKE_POINTS, MAX_DRAWING_POINTS - pointCount(drawing.strokes), props.remainingPoints());
+    if (current.surface && (event.clientX - rect.left > drawing.width || event.clientY - rect.top > drawing.height)) {
+      setMessage("This part of the note is beyond the drawing area. Start a new note to keep drawing.");
+      return;
+    }
+    const budget = Math.min(MAX_STROKE_POINTS, MAX_DRAWING_POINTS - pointCount(drawing.strokes), current.remainingPoints());
     if (!erase && (budget < 1 || drawing.strokes.length >= MAX_INK_STROKES)) {
-      setMessage("This drawing is full. Add another ink drawing to continue.");
+      setMessage(current.surface ? "This note has reached its drawing limit. Erase some ink or start a new note." : "This drawing is full. Add another ink drawing to continue.");
       return;
     }
     event.preventDefault(); event.stopPropagation();
-    event.currentTarget.focus({ preventScroll: true });
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const point = inkPoint(event.nativeEvent, rect);
+    target.focus({ preventScroll: true });
+    target.setPointerCapture(event.pointerId);
+    const coordinates = current.surface ? new DOMRect(rect.left, rect.top, drawing.width, drawing.height) : rect;
+    const point = inkPoint(event, coordinates);
     active.current = {
-      pointerId: event.pointerId, rect, erase, original: drawing.strokes, strokes: drawing.strokes,
-      stroke: { color: props.color, width: props.width, points: [point] }, last: point, budget,
+      pointerId: event.pointerId, target, rect: coordinates, erase, original: drawing.strokes, strokes: drawing.strokes,
+      stroke: { color: current.color, width: current.width, points: [point] }, last: point, budget,
     };
     setMessage("");
-    sample(event.nativeEvent);
+    sample(event);
   };
+
+  useEffect(() => {
+    const target = props.surface?.current;
+    if (!target) return;
+    let suppressClick = false;
+    const over = (event: PointerEvent) => {
+      // pointerover precedes pointerdown, including on digitizers without hover.
+      // Set this synchronously, before the browser chooses a pan gesture.
+      if (!active.current) target.style.touchAction = latest.current.canEdit() && (event.pointerType === "pen" || (event.pointerType === "mouse" && latest.current.mouse)) ? "none" : "pan-y";
+    };
+    const down = (event: PointerEvent) => {
+      if ((event.target as Element).closest(".ink-node")) return;
+      if (active.current) { if (event.pointerType === "touch") { event.preventDefault(); event.stopPropagation(); } return; }
+      suppressClick = false;
+      start(event, target);
+      suppressClick = active.current !== null;
+    };
+    const move = (event: PointerEvent) => {
+      if (active.current?.pointerId === event.pointerId) { event.preventDefault(); event.stopPropagation(); sample(event); }
+    };
+    const up = (event: PointerEvent) => {
+      if (active.current?.pointerId === event.pointerId) { event.preventDefault(); event.stopPropagation(); sample(event, true); finish(); }
+    };
+    const interrupted = (event: PointerEvent) => { if (active.current?.pointerId === event.pointerId) finish(); };
+    const click = (event: MouseEvent) => { if (suppressClick) { event.preventDefault(); event.stopPropagation(); suppressClick = false; } };
+    target.addEventListener("pointerover", over, true);
+    target.addEventListener("pointerdown", down, true);
+    target.addEventListener("pointermove", move, true);
+    target.addEventListener("pointerup", up, true);
+    target.addEventListener("pointercancel", interrupted, true);
+    target.addEventListener("lostpointercapture", interrupted, true);
+    target.addEventListener("click", click, true);
+    return () => {
+      target.removeEventListener("pointerover", over, true);
+      target.removeEventListener("pointerdown", down, true);
+      target.removeEventListener("pointermove", move, true);
+      target.removeEventListener("pointerup", up, true);
+      target.removeEventListener("pointercancel", interrupted, true);
+      target.removeEventListener("lostpointercapture", interrupted, true);
+      target.removeEventListener("click", click, true);
+    };
+  }, [props.surface, finish]);
+
+  if (props.surface) return <>
+    <div className="note-ink-layer" style={{ maxWidth: props.drawing.width, maxHeight: props.drawing.height }} aria-hidden={!props.drawing.strokes.length}>
+      <canvas ref={canvas} className="ink-canvas note-ink-canvas" role="img" aria-label={props.drawing.description || "Handwriting on note"} data-empty={!props.drawing.strokes.length} />
+    </div>
+    <p className="note-ink-message" role="status">{message}</p>
+  </>;
 
   return <>
     <div className={`ink-paper${props.tool === "eraser" ? " is-erasing" : ""}`} style={{ aspectRatio: `${props.drawing.width} / ${props.drawing.height}` }}>
       <canvas ref={canvas} className="ink-canvas" role="img" tabIndex={editable ? 0 : undefined}
         aria-label={props.drawing.description || "Ink drawing"} aria-describedby={editable ? hintId : undefined}
-        data-empty={props.drawing.strokes.length === 0} onPointerDown={start}
+        data-empty={props.drawing.strokes.length === 0} onPointerDown={event => start(event.nativeEvent, event.currentTarget)}
         onPointerMove={event => { if (active.current?.pointerId === event.pointerId) { event.preventDefault(); sample(event.nativeEvent); } }}
         onPointerUp={event => { if (active.current?.pointerId === event.pointerId) { sample(event.nativeEvent, true); finish(); } }}
         onPointerCancel={event => { if (active.current?.pointerId === event.pointerId) finish(); }}
@@ -200,9 +265,7 @@ function InkNodeView({ node, editor, getPos, deleteNode }: NodeViewProps) {
   const drawing = useMemo(() => isInkDrawing(node.attrs) ? node.attrs : null, [node.attrs]);
   const canEdit = useCallback(() => editing && editor.isEditable, [editor, editing]);
   const remainingPoints = useCallback(() => {
-    let total = 0;
-    editor.state.doc.descendants(child => { if (child.type.name === "ink") total += pointCount(child.attrs.strokes); });
-    return MAX_DOCUMENT_INK_POINTS - total;
+    return MAX_DOCUMENT_INK_POINTS - documentInkUsage(editor.state.doc).points;
   }, [editor]);
   const registerFinish = useCallback((finish: () => void) => registerInkSession(editor, finish), [editor]);
   const commit = useCallback((patch: Partial<InkDrawing>) => {
@@ -266,9 +329,7 @@ export const CozyInk = Node.create({
 export function insertInkDrawing(editor: NodeViewProps["editor"]) {
   if (!editor.isEditable) return false;
   finishActiveInk(editor);
-  let count = 0;
-  editor.state.doc.descendants(node => { if (node.type.name === "ink") count++; });
-  if (count >= MAX_INK_DRAWINGS) return false;
+  if (documentInkUsage(editor.state.doc).drawings >= MAX_INK_DRAWINGS) return false;
   const inserted = editor.chain().focus().insertContent([{ type: "ink", attrs: emptyInk() }, { type: "paragraph" }]).run();
   if (inserted) requestAnimationFrame(() => {
     if (editor.isDestroyed) return;

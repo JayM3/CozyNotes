@@ -14,7 +14,7 @@ Windows x64 is the current development, testing, and release target. macOS and L
 
 See the [Windows support scope and verification record](docs/2026-10-19-windows-support.md) for the delivery changes and local checks.
 
-**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.5
+**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.6
 
 - Rich text, checklists, images, ink drawings, and autosave.
 - Colored paper, light and dark themes, and favorites.
@@ -25,7 +25,7 @@ See the [Windows support scope and verification record](docs/2026-10-19-windows-
 <summary>Features</summary>
 
 - **Writing:** Rich text, bullet lists, resettable checklists, and local images added by paste, drop, or file picker. Fonts are bundled locally.
-- **Ink drawings:** Add a drawing from **More > Insert ink drawing**, or the pen button in wider notes. Write with a Windows pen using pressure-sensitive strokes, four colors, and three widths. Use the stroke eraser or the pen's eraser end, undo and redo, or enable **Draw with mouse**. Optional drawing descriptions are searchable. Ink remains editable after saving, duplicating, or restoring history.
+- **Ink drawings:** Write directly on the note body with a Windows pen, alongside typed text. The pen button opens **Drawing tools** with four colors, three widths, a stroke eraser, undo/redo, and optional **Draw with mouse**. Fingers scroll; ordinary mouse input edits text. Drawing descriptions are searchable, and ink remains editable after saving, duplicating, or restoring history. Existing inline ink drawings are preserved.
 - **Organization:** Library search, in-note find, paper-color filters, favorites, duplication, and bulk Trash actions. Favorites appear first; the Favorites only filter combines with search and paper colors.
 - **Appearance:** Cream, Butter, Sage, Rose, Lavender, or Mist paper, with Warm, Night, or System themes shared across windows.
 - **Windows:** Independent notes with autosave, folding, and remembered sizes and toolbar heights. New notes start at 305 by 385. On Windows, notes snap to desktop edges and neighboring notes, including matching a neighbor's size.
@@ -55,7 +55,7 @@ The **Settings** button in the sidebar opens appearance, background, and Remembe
 
 Select a note using its circle without opening it. The selection bar shows the count and provides **Select all**, **Clear selection**, and **Move to Trash**. In Trash, **Delete selected** asks for confirmation before permanently deleting the selection. Changing the search, paper-color filter, or page clears the selection.
 
-Ink drawings use a fixed light paper surface so saved pen colors stay readable in Warm and Night themes. Touch contacts do not draw; scroll from outside the drawing surface. Ink is stored locally as vector strokes, including pressure and tilt. Handwriting recognition is not included.
+Write with your pen directly on the note body. Open the pen button for drawing tools, or choose **More > Drawing tools**. Turn on **Draw with mouse** to sketch with a mouse, and turn it off to return to text selection. Fingers scroll without drawing. Ink stays at its paper coordinates when text reflows or the window resizes, and follows the note when it scrolls. It is stored locally as vector strokes, including pressure and tilt; handwriting recognition is not included. See the [direct note inking verification record](docs/2026-10-20-inline-note-ink.md) for behavior, limits, and checks.
 
 Use `Ctrl` for keyboard shortcuts:
 

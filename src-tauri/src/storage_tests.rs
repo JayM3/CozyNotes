@@ -797,6 +797,113 @@ fn ink_survives_saving_history_copying_trash_and_restart() {
 }
 
 #[test]
+fn note_surface_ink_and_text_survive_saving_history_copying_trash_and_restart() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    let mut drawing = doc("Typed text stays editable");
+    drawing["attrs"] = json!({"ink": ink_document()["content"][0]["attrs"]});
+    drawing["attrs"]["ink"]["width"] = json!(600);
+    drawing["attrs"]["ink"]["height"] = json!(1200);
+    let note = insert_note(&connection, "surface", &drawing, "sage", 1, "Sketch").unwrap();
+    assert_eq!(
+        note.plain_text,
+        "Typed text stays editable\n[Ink: A blue flower]\n"
+    );
+    assert_eq!(
+        list_notes(&connection, false, "flower", None)
+            .unwrap()
+            .len(),
+        1
+    );
+    let mut erased = drawing.clone();
+    erased["attrs"]["ink"] = Value::Null;
+    save_document(&mut connection, "surface", 0, &erased, 2, None).unwrap();
+    let version = crate::history::get(&connection, "surface", 0).unwrap();
+    assert_eq!(version.document, drawing);
+    insert_note(
+        &connection,
+        "restored-surface",
+        &version.document,
+        "sage",
+        3,
+        "Restored",
+    )
+    .unwrap();
+    connection
+        .execute(
+            "UPDATE notes SET trashed_at=4 WHERE id='restored-surface'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(
+        load_note(&connection, "restored-surface", true)
+            .unwrap()
+            .document,
+        Some(drawing.clone())
+    );
+    connection
+        .execute(
+            "UPDATE notes SET trashed_at=NULL WHERE id='restored-surface'",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+    let connection = open_database(&root.database()).unwrap();
+    assert_eq!(
+        load_note(&connection, "restored-surface", false)
+            .unwrap()
+            .document,
+        Some(drawing)
+    );
+    assert_eq!(
+        load_note(&connection, "surface", false).unwrap().document,
+        Some(erased)
+    );
+}
+
+#[test]
+fn invalid_note_surface_ink_and_shared_limits_cannot_overwrite_stored_content() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    insert_note(&connection, "note", &doc("Original"), "cream", 1, "").unwrap();
+    let mut surface = doc("Typed text");
+    surface["attrs"] = json!({"ink": ink_document()["content"][0]["attrs"]});
+    let mut invalid = surface.clone();
+    invalid["attrs"]["ink"]["strokes"][0]["points"][0]["x"] = json!(1.01);
+    assert!(save_document(&mut connection, "note", 0, &invalid, 2, None).is_err());
+    invalid = surface.clone();
+    invalid["attrs"]["ink"]["unexpected"] = json!(true);
+    assert!(document::validate(&invalid).is_err());
+    invalid = surface.clone();
+    invalid["attrs"]["unexpected"] = json!(true);
+    assert!(document::validate(&invalid).is_err());
+    let ink = ink_document()["content"][0].clone();
+    invalid = surface.clone();
+    invalid["content"] = json!(vec![ink.clone(); crate::ink::MAX_INK_DRAWINGS]);
+    assert!(document::validate(&invalid).is_err());
+    let mut large = ink.clone();
+    large["attrs"]["strokes"][0]["points"] = json!(vec![
+        large["attrs"]["strokes"][0]["points"][0]
+            .clone();
+        8192
+    ]);
+    large["attrs"]["strokes"] = json!(vec![large["attrs"]["strokes"][0].clone(); 6]);
+    invalid = surface;
+    invalid["attrs"]["ink"] = large["attrs"].clone();
+    invalid["content"] = json!([large.clone(), {"type":"blockquote","content":[large]}]);
+    assert!(document::validate(&invalid).is_err());
+    assert!(
+        crate::history::list(&connection, "note")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        load_note(&connection, "note", false).unwrap().document,
+        Some(doc("Original"))
+    );
+}
+
+#[test]
 fn invalid_ink_and_aggregate_limits_cannot_overwrite_notes_or_add_history() {
     let root = TestRoot::new();
     let mut connection = open_database(&root.database()).unwrap();
