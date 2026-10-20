@@ -14,7 +14,7 @@ Windows x64 is the current development, testing, and release target. macOS and L
 
 See the [Windows support scope and verification record](docs/2026-10-19-windows-support.md) for the delivery changes and local checks.
 
-**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.7
+**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.8
 
 - Rich text, checklists, images, ink drawings, and autosave.
 - Colored paper, light and dark themes, and favorites.
@@ -51,7 +51,7 @@ Double-click a note's left or right border to reset its width to 305 logical pix
 
 With Run in background enabled, closing the main window keeps CozyNotes available from its icon beside the Windows clock. Right-click that icon for **Notes**, **Show main menu**, and **Exit CozyNotes**. Exit waits for open drafts to save; if a draft cannot save, it stays open for recovery.
 
-The **Settings** button in the sidebar opens appearance, background, and Remember my desk preferences in the right pane. These preferences are remembered. Turn off Run in background to exit normally when the last window closes.
+The **Settings** button in the sidebar opens appearance and app behavior preferences in the right pane. Enable **Open on startup** to launch CozyNotes when you sign in. Turn off **Run in background** to exit normally when the last window closes. **Remember my desk** controls whether notes left open at exit are reopened next time.
 
 Select a note using its circle without opening it. The selection bar shows the count and provides **Select all**, **Clear selection**, and **Move to Trash**. In Trash, **Delete selected** asks for confirmation before permanently deleting the selection. Changing the search, paper-color filter, or page clears the selection.
 

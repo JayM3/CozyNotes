@@ -26,6 +26,7 @@ use std::{
 };
 use storage::{Note, NoteSummary};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartManagerExt};
 
 struct Database(Mutex<Connection>);
 struct WindowCoordinator(Mutex<HashSet<String>>);
@@ -247,7 +248,8 @@ fn set_remember_desk(
     let state = app.state::<DesktopState>();
     let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
     settings.set_remember_desk(enabled)?;
-    Ok(settings.response())
+    drop(settings);
+    settings_response(&app)
 }
 
 #[tauri::command]
@@ -552,17 +554,27 @@ fn take_app_error(
     app.state::<DesktopState>().errors.take()
 }
 
+fn settings_response(app: &tauri::AppHandle) -> Result<SettingsResponse, String> {
+    let mut response = app
+        .state::<DesktopState>()
+        .settings
+        .lock()
+        .map(|settings| settings.response())
+        .map_err(|error| error.to_string())?;
+    response.open_on_startup = app
+        .autolaunch()
+        .is_enabled()
+        .map_err(|error| error.to_string())?;
+    Ok(response)
+}
+
 #[tauri::command]
 fn get_settings(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
 ) -> Result<SettingsResponse, String> {
     require_library(&window)?;
-    app.state::<DesktopState>()
-        .settings
-        .lock()
-        .map(|settings| settings.response())
-        .map_err(|error| error.to_string())
+    settings_response(&app)
 }
 
 #[tauri::command]
@@ -578,12 +590,28 @@ fn set_run_in_background(
     let state = app.state::<DesktopState>();
     let mut settings = state.settings.lock().map_err(|error| error.to_string())?;
     settings.set_run_in_background(enabled)?;
-    let response = settings.response();
     drop(settings);
     if !enabled {
         show_window(&window)?;
     }
-    Ok(response)
+    settings_response(&app)
+}
+
+#[tauri::command]
+fn set_open_on_startup(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    enabled: bool,
+) -> Result<SettingsResponse, String> {
+    require_library(&window)?;
+    ensure_idle(&app)?;
+    let autostart = app.autolaunch();
+    if enabled {
+        autostart.enable().map_err(|error| error.to_string())?;
+    } else {
+        autostart.disable().map_err(|error| error.to_string())?;
+    }
+    settings_response(&app)
 }
 
 #[tauri::command]
@@ -816,6 +844,7 @@ fn database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -880,6 +909,7 @@ pub fn run() {
             empty_trash,
             platform_capabilities,
             get_settings,
+            set_open_on_startup,
             take_app_error,
             set_run_in_background,
             trash_notes,

@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Settings } from "./Settings";
 import { ThemeProvider } from "./theme";
 
-const mocks = vi.hoisted(() => ({ getSettings: vi.fn(), setRunInBackground: vi.fn(), setRememberDesk: vi.fn(), check: vi.fn(), relaunch: vi.fn() }));
-vi.mock("./api", () => ({ notesApi: { getSettings: mocks.getSettings, setRunInBackground: mocks.setRunInBackground, setRememberDesk: mocks.setRememberDesk } }));
+const mocks = vi.hoisted(() => ({ getSettings: vi.fn(), setRunInBackground: vi.fn(), setRememberDesk: vi.fn(), setOpenOnStartup: vi.fn(), check: vi.fn(), relaunch: vi.fn() }));
+vi.mock("./api", () => ({ notesApi: { getSettings: mocks.getSettings, setRunInBackground: mocks.setRunInBackground, setRememberDesk: mocks.setRememberDesk, setOpenOnStartup: mocks.setOpenOnStartup } }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
 
@@ -15,15 +15,16 @@ function renderSettings() {
 
 describe("Settings", () => {
   beforeEach(() => {
-    mocks.getSettings.mockReset().mockResolvedValue({ runInBackground: true, trayAvailable: true, warning: null });
-    mocks.setRunInBackground.mockReset().mockResolvedValue({ runInBackground: false, trayAvailable: true, warning: null });
+    mocks.getSettings.mockReset().mockResolvedValue({ runInBackground: true, rememberDesk: true, openOnStartup: false, trayAvailable: true, warning: null });
+    mocks.setRunInBackground.mockReset().mockResolvedValue({ runInBackground: false, rememberDesk: true, openOnStartup: false, trayAvailable: true, warning: null });
+    mocks.setOpenOnStartup.mockReset().mockResolvedValue({ runInBackground: true, rememberDesk: true, openOnStartup: true, trayAvailable: true, warning: null });
     mocks.check.mockReset().mockResolvedValue(null);
     mocks.relaunch.mockReset().mockResolvedValue(undefined);
   });
   afterEach(() => cleanup());
 
   it("preserves Remember my desk after a failed save and allows retry", async () => {
-    mocks.setRememberDesk.mockReset().mockRejectedValueOnce(new Error("Disk full")).mockResolvedValue({ rememberDesk: false, runInBackground: true, trayAvailable: true, warning: null });
+    mocks.setRememberDesk.mockReset().mockRejectedValueOnce(new Error("Disk full")).mockResolvedValue({ rememberDesk: false, runInBackground: true, openOnStartup: false, trayAvailable: true, warning: null });
     renderSettings();
     const toggle=await screen.findByRole("switch", { name: "Remember my desk" });
     fireEvent.click(toggle);
@@ -31,6 +32,22 @@ describe("Settings", () => {
     expect((toggle as HTMLInputElement).checked).toBe(true);
     fireEvent.click(toggle);
     await waitFor(() => expect((toggle as HTMLInputElement).checked).toBe(false));
+  });
+
+  it("enables Open on startup and keeps the value unchanged when saving fails", async () => {
+    mocks.setOpenOnStartup.mockRejectedValueOnce(new Error("Startup registration failed"));
+    renderSettings();
+    const toggle = await screen.findByRole("switch", { name: "Open on startup" });
+    expect((toggle as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(toggle);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect((toggle as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect((toggle as HTMLInputElement).checked).toBe(true));
+    expect(mocks.setOpenOnStartup).toHaveBeenNthCalledWith(1, true);
+    expect(mocks.setOpenOnStartup).toHaveBeenNthCalledWith(2, true);
   });
 
   it("keeps the previous switch value when saving fails and allows a retry", async () => {
@@ -49,7 +66,7 @@ describe("Settings", () => {
   });
 
   it("disables background mode with the native warning when no tray is available", async () => {
-    mocks.getSettings.mockResolvedValueOnce({ runInBackground: false, trayAvailable: false, warning: "The system tray is unavailable." });
+    mocks.getSettings.mockResolvedValueOnce({ runInBackground: false, rememberDesk: true, openOnStartup: false, trayAvailable: false, warning: "The system tray is unavailable." });
     renderSettings();
     const toggle = await screen.findByRole("switch", { name: "Run in background" });
     expect((toggle as HTMLInputElement).disabled).toBe(true);

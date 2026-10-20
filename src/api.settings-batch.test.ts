@@ -8,12 +8,14 @@ describe("settings and batch IPC", () => {
   beforeEach(() => vi.mocked(invoke).mockReset());
 
   it("uses the reviewed settings command names and payloads", async () => {
-    const settings = { runInBackground: true, trayAvailable: true, warning: null };
+    const settings = { runInBackground: true, rememberDesk: true, openOnStartup: false, trayAvailable: true, warning: null };
     vi.mocked(invoke).mockResolvedValue(settings);
     await expect(notesApi.getSettings()).resolves.toEqual(settings);
     expect(invoke).toHaveBeenNthCalledWith(1, "get_settings", {});
     await expect(notesApi.setRunInBackground(false)).resolves.toEqual(settings);
     expect(invoke).toHaveBeenNthCalledWith(2, "set_run_in_background", { enabled: false });
+    await expect(notesApi.setOpenOnStartup(true)).resolves.toEqual(settings);
+    expect(invoke).toHaveBeenNthCalledWith(3, "set_open_on_startup", { enabled: true });
   });
 
   it("reads the native window capability contract", async () => {

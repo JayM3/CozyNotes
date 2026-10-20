@@ -24,7 +24,7 @@ export type Note = Omit<NoteSummary, "snippet"> & {
 export type NoteDraft = { document: JSONContent; explicitTitle: string };
 export type SavedImageAsset = { assetId: string; mimeType: string };
 export type LibraryFilter = { query: string; color: PaperColor | null };
-export type AppSettings = { runInBackground: boolean; rememberDesk: boolean; trayAvailable: boolean; warning: string | null };
+export type AppSettings = { runInBackground: boolean; rememberDesk: boolean; openOnStartup: boolean; trayAvailable: boolean; warning: string | null };
 export const sourceCodeUrl = "https://github.com/JayM3/CozyNotes";
 export type NoteWindowState = { width: number; height: number; x: number | null; y: number | null; folded: boolean; isOpen: boolean };
 export type HistoryEntry = { revision: number; savedAt: number; title: string; preview: string };
@@ -39,6 +39,7 @@ export const notesApi = {
   getWindowState: () => invoke<NoteWindowState>("get_note_window_state"),
   setFolded: (folded: boolean) => invoke<NoteWindowState>("set_note_folded", { folded }),
   setRememberDesk: (enabled: boolean) => invoke<AppSettings>("set_remember_desk", { enabled }),
+  setOpenOnStartup: (enabled: boolean) => invoke<AppSettings>("set_open_on_startup", { enabled }),
   list: (trashed: boolean, query: string, color: PaperColor | null) =>
     invoke<NoteSummary[]>("list_notes", { trashed, query, color }),
   get: (id: string) => invoke<Note>("get_note", { id }),

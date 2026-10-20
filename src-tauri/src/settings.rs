@@ -27,6 +27,7 @@ fn default_true() -> bool {
 pub struct SettingsResponse {
     pub remember_desk: bool,
     pub run_in_background: bool,
+    pub open_on_startup: bool,
     pub tray_available: bool,
     pub warning: Option<String>,
 }
@@ -80,6 +81,7 @@ impl SettingsState {
         SettingsResponse {
             remember_desk: self.remember_desk,
             run_in_background: self.run_in_background,
+            open_on_startup: false,
             tray_available: self.tray_available,
             warning: self
                 .settings_warning
