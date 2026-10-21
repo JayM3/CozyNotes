@@ -28,6 +28,11 @@ use storage::{Note, NoteSummary};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartManagerExt};
 
+#[cfg(windows)]
+// Wry replaces its default disabled-feature list when custom browser arguments are set.
+const WEBVIEW2_BROWSER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,msAbydos";
+
 struct Database(Mutex<Connection>);
 struct WindowCoordinator(Mutex<HashSet<String>>);
 struct DesktopState {
@@ -94,7 +99,10 @@ fn open_note_window(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
             return Err("This note is already opening".into());
         }
     }
-    let result = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()));
+    #[cfg(windows)]
+    let builder = builder.additional_browser_args(WEBVIEW2_BROWSER_ARGS);
+    let result = builder
         .title("CozyNotes")
         .decorations(false)
         .maximizable(!cfg!(windows))
@@ -340,7 +348,10 @@ async fn show_library(app: tauri::AppHandle, focus_search: Option<bool>) -> Resu
     } else {
         "index.html"
     };
-    let result = WebviewWindowBuilder::new(&app, "library", WebviewUrl::App(entry.into()))
+    let builder = WebviewWindowBuilder::new(&app, "library", WebviewUrl::App(entry.into()));
+    #[cfg(windows)]
+    let builder = builder.additional_browser_args(WEBVIEW2_BROWSER_ARGS);
+    let result = builder
         .title("CozyNotes")
         .decorations(false)
         .inner_size(615.0, 500.0)

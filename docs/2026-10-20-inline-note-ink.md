@@ -26,7 +26,7 @@ The package contains `InkView.xbf`, `InkRendering.xbf`, `InkCanvas`, `InkPresent
 
 These are static observations and inferences. Exact native methods and input routing were not decompiled because no native REA provider was configured; Sticky Notes was not launched. Retained REA records were revalidated through REA 6.4.0 and supplemented with a Windows SDK PRI resource dump. Full evidence, offsets, hashes, and limitations are in the workspace's `Plan/2026-10-20-inline-ink-research.md` and `Plan/evidence/inline-ink-findings.json`.
 
-The implementation uses CozyNotes' Pointer Events renderer in WebView2. It does not embed Microsoft's control or implement handwriting recognition.
+The implementation uses CozyNotes' Pointer Events renderer in WebView2. It does not embed Microsoft's control or implement handwriting recognition. On Windows, the WebView2 handwriting-to-text feature is disabled so pen strokes remain vector ink while keyboard text editing stays available.
 
 ## Verification
 
