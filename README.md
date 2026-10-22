@@ -14,7 +14,7 @@ Windows x64 is the current development, testing, and release target. macOS and L
 
 See the [Windows support scope and verification record](docs/2026-10-19-windows-support.md) for the delivery changes and local checks.
 
-**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.9
+**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.10
 
 - Rich text, checklists, images, ink drawings, and autosave.
 - Colored paper, light and dark themes, and favorites.

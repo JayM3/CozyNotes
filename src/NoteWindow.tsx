@@ -11,7 +11,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
-import { AArrowDown, AArrowUp, ArrowDown, ArrowUp, Bold, Check, CheckSquare, ChevronDown, ChevronUp, Copy, History, ImagePlus, Italic, List, MoreHorizontal, PenLine, Plus, RotateCcw, Search, Star, Trash2, Underline as UnderlineIcon, X } from "lucide-react";
+import { AArrowDown, AArrowUp, ArrowDown, ArrowUp, Bold, Check, CheckSquare, ChevronDown, ChevronUp, Copy, Eye, EyeOff, History, ImagePlus, Italic, List, MoreHorizontal, PenLine, Plus, RotateCcw, Search, Star, Trash2, Underline as UnderlineIcon, X } from "lucide-react";
 import { notesApi, paperColors } from "./api";
 import type { Note, NoteDraft, PaperColor } from "./api";
 import { SaveCoordinator } from "./saveCoordinator";
@@ -52,6 +52,7 @@ export function NoteWindow({ id }: { id: string }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [drawingToolsOpen, setDrawingToolsOpen] = useState(false);
   const [inkTools, setInkTools] = useState(defaultNoteInkTools);
+  const [titleVisible, setTitleVisible] = useState(true);
   const [folded, setFolded] = useState(false);
   const [foldReady, setFoldReady] = useState(false);
   const unfoldButton = useRef<HTMLButtonElement>(null);
@@ -341,10 +342,11 @@ export function NoteWindow({ id }: { id: string }) {
       editor.view.dispatch(editor.state.tr.setSelection(bookmark.current.resolve(editor.state.doc)).setMeta("addToHistory", false));
       bookmark.current = null;
     }
-    if (titleSelection.current) {
-      titleInput.current?.focus();
-      titleInput.current?.setSelectionRange(titleSelection.current.from, titleSelection.current.to);
-      titleSelection.current = null;
+    const selection = titleSelection.current;
+    titleSelection.current = null;
+    if (selection && titleInput.current) {
+      titleInput.current.focus();
+      titleInput.current.setSelectionRange(selection.from, selection.to);
     } else editor.commands.focus();
   }, [editor]);
   const changeTitle = (value: string) => {
@@ -397,9 +399,8 @@ export function NoteWindow({ id }: { id: string }) {
       <div className="toolbar-group" role="group" aria-label="Text formatting" data-tauri-drag-region>
         <button className={`tool ${state?.bold ? "active" : ""}`} disabled={!ready || locked} aria-label="Bold" title="Bold" aria-pressed={state?.bold ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleBold().run())}><Bold size={16} /></button>
         <button className={`tool secondary-format ${state?.italic ? "active" : ""}`} disabled={!ready || locked} aria-label="Italic" title="Italic" aria-pressed={state?.italic ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleItalic().run())}><Italic size={16} /></button>
-        <button className={`tool secondary-format compact-underline ${state?.underline ? "active" : ""}`} disabled={!ready || locked} aria-label="Underline" title="Underline" aria-pressed={state?.underline ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleUnderline().run())}><UnderlineIcon size={16} /></button>
         <button className="tool" disabled={!ready || locked} aria-label="Insert image" title="Insert image" onMouseDown={event => event.preventDefault()} onClick={chooseImage}><ImagePlus size={16} /></button>
-        <button className={`tool${drawingToolsOpen ? " active" : ""}`} disabled={!ready || locked} aria-label="Drawing tools" title="Drawing tools" aria-expanded={drawingToolsOpen} aria-controls="note-drawing-tools" onMouseDown={event => event.preventDefault()} onClick={toggleDrawingTools}><PenLine size={16} /></button>
+        <button className={`tool ${state?.underline ? "active" : ""}`} disabled={!ready || locked} aria-label="Underline" title="Underline" aria-pressed={state?.underline ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleUnderline().run())}><UnderlineIcon size={16} /></button>
         <button className={`tool secondary-format ${state?.bullet ? "active" : ""}`} disabled={!ready || locked} aria-label="Bullet list" title="Bullet list" aria-pressed={state?.bullet ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleBulletList().run())}><List size={16} /></button>
         <button className={`tool secondary-format ${state?.task ? "active" : ""}`} disabled={!ready || locked} aria-label="Checklist" title="Checklist" aria-pressed={state?.task ?? false} onMouseDown={event => event.preventDefault()} onClick={() => command(current => current.chain().toggleTaskList().run())}><CheckSquare size={16} /></button>
       </div>
@@ -430,7 +431,10 @@ export function NoteWindow({ id }: { id: string }) {
           <button role="menuitem" disabled={!ready || locked} className="danger-action" onClick={() => void trash()}><Trash2 size={15} /> Move to Trash</button>
           <button role="menuitem" onClick={() => void close()}><X size={15} /> Close note</button>
         </Popover>
-        <button className="tool close-tool" onClick={() => void close()} aria-label="Close note" title="Close note"><X size={17} /></button>
+        <div className="note-close-actions">
+          <button className="tool close-tool" onClick={() => void close()} aria-label="Close note" title="Close note"><X size={17} /></button>
+          <button className={`tool title-toggle${titleVisible ? " active" : ""}`} disabled={!ready || locked} aria-label={titleVisible ? "Hide title" : "Show title"} title={titleVisible ? "Hide title" : "Show title"} aria-pressed={titleVisible} onClick={() => setTitleVisible(value => !value)}>{titleVisible ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+        </div>
       </div>
     </NoteToolbar>
     {keepOnTop.error && <div className="keep-on-top-error" role="alert"><span>{keepOnTop.error}</span><button type="button" disabled={locked || keepOnTop.pending} onClick={() => void keepOnTop.retry()}>Retry</button></div>}
@@ -441,7 +445,7 @@ export function NoteWindow({ id }: { id: string }) {
       <button className="tool" aria-label="Next match" title="Next match" disabled={!matchCount} onClick={() => editor && stepFind(editor, 1)}><ArrowDown size={16} /></button>
       <button className="tool" aria-label="Close find" title="Close find" onClick={dismissFind}><X size={16} /></button>
     </div>}
-    <NoteTitle inputRef={titleInput} value={title} readOnly={!ready || locked} find={state?.find} onChange={changeTitle} onEnter={() => { if (editor?.isEditable) editor.commands.focus("start"); }} onBlur={() => { void coordinator.current?.flush().catch(() => undefined); }} onComposition={composing => coordinator.current?.setComposing(composing)} />
+    {titleVisible && <NoteTitle inputRef={titleInput} value={title} readOnly={!ready || locked} find={state?.find} onChange={changeTitle} onEnter={() => { if (editor?.isEditable) editor.commands.focus("start"); }} onBlur={() => { void coordinator.current?.flush().catch(() => undefined); }} onComposition={composing => coordinator.current?.setComposing(composing)} />}
     <input ref={imageFileInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp" multiple aria-label="Choose images" onChange={event => { void importImages(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
     <section className="note-body">
       {error && <div className="save-error" role="alert">{error}<div className="error-actions"><button onClick={() => void retry()}>Retry</button><button onClick={() => void copyDraft()}>{loadError ? "Copy available text" : "Copy draft"}</button></div></div>}

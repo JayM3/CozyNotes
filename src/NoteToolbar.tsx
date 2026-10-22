@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent, ReactNode } from "react";
 import { startWindowDrag } from "./windowDrag";
 
-const minimumHeight = 88;
-const defaultHeight = 96;
+const minimumHeight = 82;
+const defaultHeight = 82;
+const previousDefaultHeight = 96;
 const maximumHeight = 180;
 
 function readHeight(key: string) {
   try {
     const value = Number(localStorage.getItem(key));
+    if (value === previousDefaultHeight) return defaultHeight;
     if (Number.isFinite(value) && value >= minimumHeight) return Math.min(value, maximumHeight);
   } catch { /* Resizing still works when local preferences are unavailable. */ }
   return defaultHeight;

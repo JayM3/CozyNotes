@@ -103,12 +103,12 @@ h1 { margin: 0; color: var(--color-ink); font: 700 var(--text-heading)/1.1 var(-
 .dialog-button.danger:hover { background: var(--color-danger-hover); }
 
 .note-window { display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; color: var(--color-ink); background: var(--paper-color, var(--color-paper)); }
-.note-toolbar { position: relative; display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; gap: var(--space-2); min-height: 88px; padding: 8px var(--space-2) 10px; border-bottom: 1px solid color-mix(in oklch, var(--color-ink) 15%, transparent); }
-.toolbar-group { display: grid; grid-template-columns: repeat(3, 34px); grid-template-rows: repeat(2, 34px); gap: 2px; flex: 0 0 auto; }
+.note-toolbar { position: relative; display: flex; align-items: flex-start; justify-content: space-between; flex: 0 0 auto; gap: var(--space-1); min-height: 82px; padding: 4px var(--space-1) 8px; border-bottom: 1px solid color-mix(in oklch, var(--color-ink) 15%, transparent); }
+.toolbar-group { display: grid; grid-template-columns: repeat(3, 34px); grid-template-rows: repeat(2, 34px); gap: 1px; flex: 0 0 auto; }
 @media (min-width: 366px) { .toolbar-group { grid-template-columns: repeat(4, 34px); } }
-@media (max-width: 365px) { .toolbar-group .compact-underline { display: none; } }
-.note-actions { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.note-actions { display: flex; align-items: center; align-self: flex-start; gap: 0; min-width: 0; margin-inline-start: auto; }
 .note-actions .tool, .note-actions .popover { flex-basis: 30px; width: 30px; }
+.note-close-actions { display: grid; flex: 0 0 30px; width: 30px; }
 .toolbar-resizer { position: absolute; inset: auto 0 0; height: 8px; cursor: ns-resize; touch-action: none; user-select: none; }
 .toolbar-resizer::after { content: ""; position: absolute; width: 28px; height: 2px; left: calc(50% - 14px); top: 3px; border-radius: 1px; background: var(--color-secondary); opacity: .5; }
 .toolbar-resizer:hover::after, .toolbar-resizer:focus-visible::after { opacity: 1; }

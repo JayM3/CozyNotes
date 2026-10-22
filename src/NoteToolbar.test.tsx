@@ -14,9 +14,9 @@ describe("Note toolbar resizing", () => {
     const { unmount } = render(<NoteToolbar id="first"><button>Bold</button></NoteToolbar>);
     const handle = screen.getByRole("separator", { name: "Toolbar height" });
     fireEvent.keyDown(handle, { key: "ArrowDown" });
-    expect(handle.getAttribute("aria-valuenow")).toBe("100");
+    expect(handle.getAttribute("aria-valuenow")).toBe("86");
     fireEvent.keyDown(handle, { key: "ArrowUp", shiftKey: true });
-    expect(handle.getAttribute("aria-valuenow")).toBe("88");
+    expect(handle.getAttribute("aria-valuenow")).toBe("82");
     fireEvent.keyDown(handle, { key: "End" });
     fireEvent.keyDown(handle, { key: "ArrowDown" });
     expect(handle.getAttribute("aria-valuenow")).toBe("180");
@@ -25,7 +25,14 @@ describe("Note toolbar resizing", () => {
     expect(screen.getByRole("separator").getAttribute("aria-valuenow")).toBe("180");
     reopened.unmount();
     render(<NoteToolbar id="second">Another note</NoteToolbar>);
-    expect(screen.getByRole("separator").getAttribute("aria-valuenow")).toBe("96");
+    expect(screen.getByRole("separator").getAttribute("aria-valuenow")).toBe("82");
+  });
+
+  it("migrates the previous default height to the compact toolbar height", () => {
+    localStorage.setItem("cozynotes.toolbar-height.first", "96");
+    render(<NoteToolbar id="first">Note</NoteToolbar>);
+    expect(screen.getByRole("separator").getAttribute("aria-valuenow")).toBe("82");
+    expect(localStorage.getItem("cozynotes.toolbar-height.first")).toBe("82");
   });
 
   it("keeps the editing area available in short windows without losing the preferred height", () => {
@@ -42,9 +49,9 @@ describe("Note toolbar resizing", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("Storage unavailable"); });
     render(<NoteToolbar id="first">Note</NoteToolbar>);
     const handle = screen.getByRole("separator");
-    expect(handle.getAttribute("aria-valuenow")).toBe("96");
+    expect(handle.getAttribute("aria-valuenow")).toBe("82");
     fireEvent.keyDown(handle, { key: "End" });
     fireEvent.doubleClick(handle);
-    expect(handle.getAttribute("aria-valuenow")).toBe("96");
+    expect(handle.getAttribute("aria-valuenow")).toBe("82");
   });
 });
