@@ -751,14 +751,14 @@ mod tests {
                 let current = client_rect(window.0).unwrap();
                 let result = window.double_click_border(HTBOTTOMRIGHT);
                 assert_eq!((result.left, result.top), (before.left, before.top));
+                let area = work_areas()[0];
+                let expected_height =
+                    ((height as f64 * display_scale).round() as i32).min(area.bottom - before.top);
                 assert_eq!(
                     result.right - result.left,
                     (width as f64 * display_scale).round() as i32
                 );
-                assert_eq!(
-                    result.bottom - result.top,
-                    (height as f64 * display_scale).round() as i32
-                );
+                assert_eq!(result.bottom - result.top, expected_height);
                 assert_ne!(current, result);
                 assert_eq!(window.double_click_border(HTBOTTOMRIGHT), result);
             }
