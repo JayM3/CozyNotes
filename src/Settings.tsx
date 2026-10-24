@@ -4,6 +4,8 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Download, RefreshCw } from "lucide-react";
 import { notesApi } from "./api";
 import type { AppSettings } from "./api";
+import { NewNoteDefaults } from "./NewNoteDefaults";
+import { factoryNoteDefaults } from "./noteDefaults";
 import { ThemePicker } from "./ThemePicker";
 
 type UpdateState = "idle" | "checking" | "current" | "available" | "installing" | "error";
@@ -123,10 +125,18 @@ export function Settings() {
       <h2 id="settings-appearance-title">Appearance</h2>
       <ThemePicker />
     </section>
+    {loading && <p className="settings-state" role="status">Loading settings...</p>}
+    {!loading && loadError && <div className="settings-error" role="alert"><p>{loadError}</p><button className="text-action" onClick={() => void loadSettings()}>Retry</button></div>}
+    {!loading && settings && <NewNoteDefaults initial={settings.noteDefaults ?? factoryNoteDefaults} busy={saving} onSave={async defaults => {
+      setSaving(true);
+      try {
+        const result = await notesApi.setNoteDefaults(defaults);
+        setSettings(current => current ? { ...current, noteDefaults: result } : current);
+        return result;
+      } finally { setSaving(false); }
+    }} />}
     <section className="settings-section" aria-labelledby="settings-behavior-title">
       <h2 id="settings-behavior-title">App behavior</h2>
-      {loading && <p className="settings-state" role="status">Loading settings...</p>}
-      {!loading && loadError && <div className="settings-error" role="alert"><p>{loadError}</p><button className="text-action" onClick={() => void loadSettings()}>Retry</button></div>}
       {!loading && settings && <>
         <div className="background-setting">
           <div className="background-copy">

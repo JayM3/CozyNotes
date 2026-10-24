@@ -4,6 +4,7 @@ mod desktop;
 mod document;
 mod history;
 mod ink;
+mod note_defaults;
 mod operations;
 mod settings;
 mod snapping;
@@ -198,16 +199,22 @@ async fn restore_note_history(
     let db = app.state::<Database>();
     let connection = db.0.lock().map_err(|e| e.to_string())?;
     let mut version = history::get(&connection, &id, revision)?;
+    let placement = desk::copy_placement(&app, &connection, &id)?;
     let copied = assets::clone_document_assets(&app, &mut version.document)?;
     let copy_id = uuid::Uuid::new_v4().to_string();
     let title = format!("{} (restored)", version.title);
-    let note = match storage::insert_note(
+    let note = match storage::insert_note_with_placement(
         &connection,
-        &copy_id,
-        &version.document,
-        &version.color,
-        now(),
-        &title,
+        storage::NewNote {
+            id: &copy_id,
+            document: &version.document,
+            color: &version.color,
+            font_family: &version.font_family,
+            font_size: version.font_size,
+            timestamp: now(),
+            explicit_title: &title,
+        },
+        &placement,
     ) {
         Ok(note) => note,
         Err(error) => {
@@ -223,9 +230,16 @@ async fn restore_note_history(
     desktop::refresh(&app);
     // A window failure must not make a successful restore look like a failed save.
     if let Err(error) = open_note_window(&app, &copy_id) {
-        app.state::<DesktopState>().errors.record(format!(
-            "Restored note saved to your library, but its window couldn't open. {error}"
-        ));
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            desktop::report_error(
+                &app,
+                format!(
+                    "Restored note saved to your library, but its window couldn't open. {error}"
+                ),
+            )
+            .await;
+        });
     }
     Ok(note)
 }
@@ -302,13 +316,44 @@ async fn create_note(
     let id = uuid::Uuid::new_v4().to_string();
     let timestamp = now();
     let document = serde_json::json!({"type":"doc","content":[{"type":"paragraph"}]});
+    let defaults = app
+        .state::<DesktopState>()
+        .settings
+        .lock()
+        .map_err(|e| e.to_string())?
+        .note_defaults();
     let connection = state.0.lock().map_err(|error| error.to_string())?;
-    let note = storage::insert_note(&connection, &id, &document, "cream", timestamp, "")?;
+    let note = storage::insert_note_with_placement(
+        &connection,
+        storage::NewNote {
+            id: &id,
+            document: &document,
+            color: &defaults.color,
+            font_family: &defaults.font_family,
+            font_size: defaults.font_size,
+            timestamp,
+            explicit_title: "",
+        },
+        &desk::Placement {
+            width: defaults.width as f64,
+            height: defaults.height as f64,
+            ..Default::default()
+        },
+    )?;
     drop(connection);
     drop(guard);
     let _ = app.emit("note-created", &id);
     desktop::refresh(&app);
-    open_note_window(&app, &id)?;
+    if let Err(error) = open_note_window(&app, &id) {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            desktop::report_error(
+                &app,
+                format!("Note saved to your library, but its window couldn't open. {error}"),
+            )
+            .await;
+        });
+    }
     Ok(note)
 }
 
@@ -483,16 +528,22 @@ async fn duplicate_note(
     let mut document = source
         .document
         .ok_or("This saved note needs recovery and cannot be duplicated.")?;
+    let placement = desk::copy_placement(&app, &connection, &id)?;
     let copied_assets = assets::clone_document_assets(&app, &mut document)?;
     let copy_id = uuid::Uuid::new_v4().to_string();
     let timestamp = now();
-    let note = match storage::insert_note(
+    let note = match storage::insert_note_with_placement(
         &connection,
-        &copy_id,
-        &document,
-        &source.color,
-        timestamp,
-        &source.explicit_title,
+        storage::NewNote {
+            id: &copy_id,
+            document: &document,
+            color: &source.color,
+            font_family: &source.font_family,
+            font_size: source.font_size,
+            timestamp: timestamp,
+            explicit_title: &source.explicit_title,
+        },
+        &placement,
     ) {
         Ok(note) => note,
         Err(error) => {
@@ -506,7 +557,16 @@ async fn duplicate_note(
     drop(guard);
     let _ = app.emit("note-created", &copy_id);
     desktop::refresh(&app);
-    open_note_window(&app, &copy_id)?;
+    if let Err(error) = open_note_window(&app, &copy_id) {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            desktop::report_error(
+                &app,
+                format!("Duplicate saved to your library, but its window couldn't open. {error}"),
+            )
+            .await;
+        });
+    }
     Ok(note)
 }
 
@@ -586,6 +646,21 @@ fn get_settings(
 ) -> Result<SettingsResponse, String> {
     require_library(&window)?;
     settings_response(&app)
+}
+
+#[tauri::command]
+fn set_note_defaults(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    defaults: note_defaults::NoteDefaults,
+) -> Result<note_defaults::NoteDefaults, String> {
+    require_library(&window)?;
+    ensure_idle(&app)?;
+    app.state::<DesktopState>()
+        .settings
+        .lock()
+        .map_err(|e| e.to_string())?
+        .set_note_defaults(defaults)
 }
 
 #[tauri::command]
@@ -920,6 +995,7 @@ pub fn run() {
             empty_trash,
             platform_capabilities,
             get_settings,
+            set_note_defaults,
             set_open_on_startup,
             take_app_error,
             set_run_in_background,

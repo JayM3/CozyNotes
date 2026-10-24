@@ -44,7 +44,7 @@ fn schema_two_upgrade_preserves_notes_and_creates_a_verified_snapshot() {
         "My title",
     )
     .unwrap();
-    connection.execute_batch("DROP TABLE note_history; DROP TABLE note_windows; ALTER TABLE notes DROP COLUMN favorite; PRAGMA user_version=2;").unwrap();
+    connection.execute_batch("DROP TABLE note_history; DROP TABLE note_windows; ALTER TABLE notes DROP COLUMN favorite; ALTER TABLE notes DROP COLUMN font_family; ALTER TABLE notes DROP COLUMN font_size; PRAGMA user_version=2;").unwrap();
     drop(connection);
     let connection = open_database(&root.database()).unwrap();
     let note = load_note(&connection, "existing", false).unwrap();
@@ -1336,4 +1336,110 @@ fn synthetic_library_benchmark() {
     } else {
         println!("{}", serde_json::to_string_pretty(&output).unwrap());
     }
+}
+
+#[test]
+fn schema_three_upgrade_keeps_history_trash_and_window_arrangements() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    insert_note(&connection, "existing", &doc("Before"), "sage", 22, "Title").unwrap();
+    save_document(&mut connection, "existing", 0, &doc("After"), 33, None).unwrap();
+    connection.execute_batch("UPDATE notes SET favorite=1, trashed_at=44; UPDATE note_windows SET width=420,height=510,x=20,y=30,folded=1,is_open=1;
+        ALTER TABLE notes DROP COLUMN font_family; ALTER TABLE notes DROP COLUMN font_size;
+        ALTER TABLE note_history DROP COLUMN font_family; ALTER TABLE note_history DROP COLUMN font_size;
+        PRAGMA user_version=3;").unwrap();
+    drop(connection);
+    let connection = open_database(&root.database()).unwrap();
+    let note = load_note(&connection, "existing", true).unwrap();
+    assert_eq!(note.document, Some(doc("After")));
+    assert_eq!(
+        (note.revision, note.updated_at, note.favorite),
+        (1, 33, true)
+    );
+    assert_eq!(
+        (
+            note.font_family.as_str(),
+            note.font_size,
+            note.color.as_str()
+        ),
+        ("source-sans-3", 16, "sage")
+    );
+    assert!(load_note(&connection, "existing", false).is_err());
+    let placement = crate::desk::load(&connection, "existing").unwrap();
+    assert_eq!(
+        (
+            placement.width,
+            placement.height,
+            placement.x,
+            placement.y,
+            placement.folded,
+            placement.is_open
+        ),
+        (420.0, 510.0, Some(20), Some(30), true, true)
+    );
+    connection
+        .execute("UPDATE notes SET trashed_at=NULL", [])
+        .unwrap();
+    let version = crate::history::get(&connection, "existing", 0).unwrap();
+    assert_eq!(version.document, doc("Before"));
+    assert_eq!(
+        (version.font_family.as_str(), version.font_size),
+        ("source-sans-3", 16)
+    );
+    drop(connection);
+    open_database(&root.database()).unwrap();
+    assert_eq!(fs::read_dir(root.0.join("recovery")).unwrap().count(), 1);
+}
+
+#[test]
+fn creation_saves_typography_and_placement_atomically_and_history_keeps_typography() {
+    let root = TestRoot::new();
+    let mut connection = open_database(&root.database()).unwrap();
+    let document = doc("First");
+    let new = || NewNote {
+        id: "custom",
+        document: &document,
+        color: "sage",
+        font_family: "nunito",
+        font_size: 20,
+        timestamp: 10,
+        explicit_title: "Title",
+    };
+    let placement = crate::desk::Placement {
+        width: 400.0,
+        height: 500.0,
+        ..Default::default()
+    };
+    connection.execute_batch("CREATE TRIGGER fail_placement BEFORE INSERT ON note_windows BEGIN SELECT RAISE(ABORT, 'disk failure'); END;").unwrap();
+    assert!(insert_note_with_placement(&connection, new(), &placement).is_err());
+    assert!(load_note(&connection, "custom", true).is_err());
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM note_windows", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    connection
+        .execute_batch("DROP TRIGGER fail_placement;")
+        .unwrap();
+    let note = insert_note_with_placement(&connection, new(), &placement).unwrap();
+    assert_eq!((note.font_family.as_str(), note.font_size), ("nunito", 20));
+    let saved = crate::desk::load(&connection, "custom").unwrap();
+    assert_eq!(
+        (saved.width, saved.height, saved.folded, saved.is_open),
+        (400.0, 500.0, false, false)
+    );
+    save_document(&mut connection, "custom", 0, &doc("Second"), 20, None).unwrap();
+    let version = crate::history::get(&connection, "custom", 0).unwrap();
+    assert_eq!(
+        (version.font_family.as_str(), version.font_size),
+        ("nunito", 20)
+    );
+    assert_eq!(version.document, document);
+    connection
+        .execute("DELETE FROM note_windows WHERE note_id='custom'", [])
+        .unwrap();
+    let legacy = crate::desk::load(&connection, "custom").unwrap();
+    assert_eq!((legacy.width, legacy.height), (305.0, 385.0));
 }

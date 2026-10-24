@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { factoryNoteDefaults } from "./noteDefaults";
 import { notesApi } from "./api";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -16,6 +17,13 @@ describe("settings and batch IPC", () => {
     expect(invoke).toHaveBeenNthCalledWith(2, "set_run_in_background", { enabled: false });
     await expect(notesApi.setOpenOnStartup(true)).resolves.toEqual(settings);
     expect(invoke).toHaveBeenNthCalledWith(3, "set_open_on_startup", { enabled: true });
+  });
+
+  it("saves the complete note defaults with a focused response", async () => {
+    const defaults = { ...factoryNoteDefaults, width: 400, height: 500 };
+    vi.mocked(invoke).mockResolvedValue(defaults);
+    await expect(notesApi.setNoteDefaults(defaults)).resolves.toEqual(defaults);
+    expect(invoke).toHaveBeenCalledWith("set_note_defaults", { defaults });
   });
 
   it("reads the native window capability contract", async () => {

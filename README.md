@@ -12,9 +12,11 @@ CozyNotes is an offline desktop notes app for Windows x64. Write in floating not
 
 Windows x64 is the current development, testing, and release target. macOS and Linux support is on hold as of October 19, 2026.
 
+See the [default note settings verification record](docs/2026-10-24-default-note-settings.md) for the new defaults implementation and checks.
+
 See the [Windows support scope and verification record](docs/2026-10-19-windows-support.md) for the delivery changes and local checks.
 
-**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.10
+**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.11
 
 - Rich text, checklists, images, ink drawings, and autosave.
 - Colored paper, light and dark themes, and favorites.
@@ -28,7 +30,7 @@ See the [Windows support scope and verification record](docs/2026-10-19-windows-
 - **Ink drawings:** Write directly on the note body with a Windows pen, alongside typed text. The pen button opens **Drawing tools** with four colors, three widths, a stroke eraser, undo/redo, and optional **Draw with mouse**. Fingers scroll; ordinary mouse input edits text. Ink remains editable after saving, duplicating, or restoring history. Existing inline ink drawings are preserved.
 - **Organization:** Library search, in-note find, paper-color filters, favorites, duplication, and bulk Trash actions. Favorites appear first; the Favorites only filter combines with search and paper colors.
 - **Appearance:** Cream, Butter, Sage, Rose, Lavender, or Mist paper, with Warm, Night, or System themes shared across windows.
-- **Windows:** Independent notes with autosave, folding, and remembered sizes and toolbar heights. New notes start at 305 by 385. On Windows, notes snap to desktop edges and neighboring notes, including matching a neighbor's size.
+- **Windows:** Independent notes with autosave, folding, and remembered sizes and toolbar heights. New notes start at your saved default size (305 by 385 initially). On Windows, notes snap to desktop edges and neighboring notes, including matching a neighbor's size.
 - **Keep on top:** Pin a note above ordinary windows from its toolbar. This resets when the note window closes.
 - **Remember my desk:** Reopen notes left open at exit with their sizes, supported positions, and folded state. Individually closed notes stay closed. Automatic reopening can be disabled in Settings.
 - **History and recovery:** Preview up to 100 earlier saved versions from **More > Note history**, including formatting and images. Restore a version as a new note, or recover deleted notes from Trash before permanent deletion.
@@ -47,11 +49,13 @@ Windows notes snap to all four desktop work-area edges, clear of the taskbar, an
 
 When resizing notes that touch, left/right handles can snap to a neighbor's width, top/bottom handles to its height, and corners to both. The opposite edges stay anchored. Resize snapping uses notes touching at the start of the gesture and respects the minimum note size.
 
-Double-click a note's left or right border to reset its width to 305 logical pixels, or its top or bottom border to reset its height to 385 logical pixels. Double-clicking a corner resets both dimensions. The opposite edges stay anchored, and the reset size is remembered with the note's window arrangement.
+Double-click a note's left or right border to reset its width to your current default, or its top or bottom border to reset its height to your current default (initially 305 by 385 logical pixels). Double-clicking a corner resets both dimensions. The opposite edges stay anchored, and the reset size is remembered with the note's window arrangement.
 
 With Run in background enabled, closing the main window keeps CozyNotes available from its icon beside the Windows clock. Right-click that icon for **Notes**, **Show main menu**, and **Exit CozyNotes**. Exit waits for open drafts to save; if a draft cannot save, it stays open for recovery.
 
-The **Settings** button in the sidebar opens appearance and app behavior preferences in the right pane. Enable **Open on startup** to launch CozyNotes when you sign in. Turn off **Run in background** to exit normally when the last window closes. **Remember my desk** controls whether notes left open at exit are reopened next time.
+The **Settings** button in the sidebar opens preferences in the right pane. **New note defaults** lets you choose paper color, Source Sans 3 or Nunito, a starting text size, and a preset or custom window size. Preview your choices, then select **Save defaults**. **Reset to CozyNotes defaults** fills the form with factory values; save to apply them. Defaults affect newly created blank notes. Existing notes retain their appearance and saved arrangement; duplicates copy the source appearance and expanded dimensions, and history restores use the saved version’s typography. Window sizes fit the available screen. Reading-size buttons and Ctrl + + / - are temporary; Ctrl + 0 and reopening return to the note’s saved base size.
+
+App behavior preferences share the same Settings page. Enable **Open on startup** to launch CozyNotes when you sign in. Turn off **Run in background** to exit normally when the last window closes. **Remember my desk** controls whether notes left open at exit are reopened next time.
 
 Select a note using its circle without opening it. The selection bar shows the count and provides **Select all**, **Clear selection**, and **Move to Trash**. In Trash, **Delete selected** asks for confirmation before permanently deleting the selection. Changing the search, paper-color filter, or page clears the selection.
 
@@ -66,7 +70,7 @@ Use `Ctrl` for keyboard shortcuts:
 | Ctrl + F | Find in a note, or search from the library |
 | Ctrl + Shift + F | Open library search from a note |
 | Ctrl + + / - | Adjust note reading size |
-| Ctrl + 0 | Reset note reading size |
+| Ctrl + 0 | Reset to this note’s saved reading size |
 
 </details>
 

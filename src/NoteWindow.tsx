@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -32,8 +31,8 @@ import { CozyInk, InkEditingContext } from "./InkNode";
 import { finishActiveInk } from "./inkSession";
 import { CozyDocument, getNoteDocument, loadNoteDocument } from "./noteInk";
 import { defaultNoteInkTools, NoteContent, NoteDrawingTools } from "./NoteContent";
+import { nextReadingSize, noteTypography } from "./noteDefaults";
 
-const readingSizes = [12, 14, 16, 18, 20, 24];
 export function NoteWindow({ id }: { id: string }) {
   const nativeWindow = useMemo(() => getCurrentWindow(), []);
   const [note, setNote] = useState<Note | null>(null);
@@ -168,6 +167,7 @@ export function NoteWindow({ id }: { id: string }) {
     void notesApi.get(id).then(value => {
       if (cancelled || editor.isDestroyed) return;
       setNote(value);
+      setFontSize(value.fontSize);
       titleValue.current = value.explicitTitle;
       setTitle(value.explicitTitle);
       if (!value.document || value.documentError) throw new Error(value.documentError || "The saved document is unreadable.");
@@ -356,7 +356,7 @@ export function NoteWindow({ id }: { id: string }) {
     setFindTitle(editor, value);
     coordinator.current.markDirty({ document: getNoteDocument(editor), explicitTitle: value });
   };
-  const changeReadingSize = (direction: number) => setFontSize(value => readingSizes[Math.max(0, Math.min(readingSizes.length - 1, readingSizes.indexOf(value) + direction))]);
+  const changeReadingSize = (direction: number) => setFontSize(value => nextReadingSize(value, direction));
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -372,14 +372,14 @@ export function NoteWindow({ id }: { id: string }) {
       if (primary && event.key.toLowerCase() === "n") { event.preventDefault(); void windowAction(notesApi.create, "Couldn't create a note."); }
       if (primary && ["+", "=", "-", "0"].includes(event.key)) {
         event.preventDefault();
-        if (event.key === "0") setFontSize(16);
+        if (event.key === "0") setFontSize(note?.fontSize ?? 16);
         else changeReadingSize(event.key === "-" ? -1 : 1);
       }
       if (event.key === "Escape" && findOpen && !event.defaultPrevented) { event.preventDefault(); dismissFind(); }
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [close, openFind, dismissFind, findOpen, windowAction, historyOpen, folded]);
+  }, [close, openFind, dismissFind, findOpen, windowAction, historyOpen, folded, note?.fontSize]);
 
   const activeIndex = state?.find.activeIndex ?? -1;
   const matchCount = state?.find.matches.length ?? 0;
@@ -388,7 +388,7 @@ export function NoteWindow({ id }: { id: string }) {
   }, [editor, findOpen, activeIndex, matchCount, findQuery]);
 
   const ready = Boolean(note) && !loadError && closeReady;
-  return <main className={`note-window paper-${note?.color ?? "cream"}${folded ? " is-folded" : ""}`} style={{ "--reading-size": `${fontSize}px` } as CSSProperties}>
+  return <main className={`note-window paper-${note?.color ?? "cream"}${folded ? " is-folded" : ""}`} style={noteTypography(note?.fontFamily ?? "source-sans-3", fontSize)}>
     {folded && <header className="folded-strip" data-tauri-drag-region onMouseDown={startWindowDrag}>
       <span className="folded-title" data-tauri-drag-region title={error || title || note?.title}>{error || title || note?.title || "Untitled note"}</span>
       <button ref={unfoldButton} className="tool" aria-label="Unfold note" title="Unfold note" disabled={locked || !foldReady} onClick={() => void toggleFold()}><ChevronDown size={18} /></button>

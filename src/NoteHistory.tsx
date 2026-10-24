@@ -8,6 +8,7 @@ import { CozyImage } from "./ImageNode";
 import { CozyInk } from "./InkNode";
 import { CozyDocument } from "./noteInk";
 import { NoteContent } from "./NoteContent";
+import { noteTypography } from "./noteDefaults";
 import { notesApi } from "./api";
 import type { HistoryEntry, HistoryVersion } from "./api";
 
@@ -18,7 +19,7 @@ function HistoryPreview({ version }: { version: HistoryVersion }) {
     editable: false,
     editorProps: { attributes: { class: "note-editor", "aria-label": "Saved note content" } },
   }, [version.revision]);
-  return <div className={`history-preview paper-${version.color}`}><h3>{version.title}</h3><NoteContent editor={editor} /></div>;
+  return <div className={`history-preview paper-${version.color}`} style={noteTypography(version.fontFamily, version.fontSize)}><h3>{version.title}</h3><NoteContent editor={editor} /></div>;
 }
 
 export function NoteHistory({ id, onClose, onRestore }: {

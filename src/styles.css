@@ -191,7 +191,7 @@ h1 { margin: 0; color: var(--color-ink); font: 700 var(--text-heading)/1.1 var(-
 .history-excerpt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .history-preview { padding: var(--space-3); background: var(--paper-color); }
 .history-preview h3 { margin: 0 0 var(--space-3); overflow-wrap: anywhere; }
-.history-preview .note-editor { --reading-size: 16px; min-height: 0; }
+.history-preview .note-editor { min-height: 0; }
 .history-preview input[type="checkbox"] { pointer-events: none; }
 .history-back { display: flex; align-items: center; gap: var(--space-1); align-self: flex-start; min-height: 34px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-small); color: var(--color-accent-text); background: transparent; }
 .history-restore { flex: 0 0 auto; margin-top: var(--space-3); color: var(--color-accent-ink); border-color: var(--color-accent); background: var(--color-accent); }
@@ -339,4 +339,54 @@ h1 { margin: 0; color: var(--color-ink); font: 700 var(--text-heading)/1.1 var(-
   .background-switch:checked::after { background: HighlightText; }
   .find-match, .note-preview mark { text-decoration: underline; }
   .find-match-active { outline: 2px solid Highlight; }
+}
+
+/* Note typography is scoped to the writing surface, never to application controls. */
+.note-editor, .note-title-input, .note-title-highlights, .folded-title,
+.history-preview h3, .defaults-preview-content { font-family: var(--note-font, var(--font-body)); }
+.history-preview h3 { font-size: calc(var(--reading-size) + 2px); }
+.defaults-description { margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--color-secondary); line-height: 1.5; }
+.defaults-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+.defaults-fields, .defaults-colors { min-width: 0; margin: 0; padding: 0; border: 0; }
+.defaults-fields { display: grid; gap: var(--space-3); }
+.defaults-fields label, .defaults-colors legend { font-size: var(--text-sm); font-weight: 600; }
+.defaults-fields > label, .defaults-pair > label { display: flex; flex-direction: column; min-width: 0; gap: var(--space-1); }
+.defaults-fields input[type="number"], .defaults-fields select { width: 100%; min-width: 0; min-height: 36px; padding: 6px 8px; border: 1px solid var(--color-secondary); border-radius: var(--radius-control); color: var(--color-ink); background: var(--color-paper); font-weight: 400; }
+.defaults-fields [aria-invalid="true"] { border-color: var(--color-danger); }
+.defaults-fields .defaults-hint, .defaults-fields .settings-error { margin: 0; font-size: var(--text-xs); font-weight: 400; line-height: 1.45; }
+.defaults-hint { color: var(--color-secondary); }
+.defaults-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
+.defaults-swatches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-2); }
+.defaults-swatch { position: relative; display: flex; align-items: center; gap: 6px; min-height: 36px; cursor: pointer; }
+.defaults-swatch input { position: absolute; width: 24px; height: 24px; margin: 0; opacity: 0; }
+.defaults-swatch-paper { display: grid; place-items: center; flex: 0 0 24px; height: 24px; border: 1px solid var(--color-secondary); border-radius: 50%; background: var(--paper-color); color: var(--color-ink); }
+.defaults-swatch input:checked + .defaults-swatch-paper { border: 2px solid var(--color-ink); }
+.defaults-swatch input:focus-visible + .defaults-swatch-paper { outline: 2px solid var(--color-focus); outline-offset: 3px; }
+.defaults-fields:disabled { opacity: .65; }
+.defaults-fields:disabled .defaults-swatch { cursor: default; }
+.defaults-preview { margin: 0; min-width: 0; padding: var(--space-3); border-radius: var(--radius-card); background: var(--color-surface); }
+.defaults-preview figcaption { display: flex; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--text-sm); font-weight: 600; }
+.defaults-preview figcaption span, .defaults-preview > p { color: var(--color-secondary); font-size: var(--text-xs); font-weight: 400; }
+.defaults-preview-space { display: grid; justify-items: center; align-items: center; min-height: 100px; }
+.defaults-preview-frame { max-width: 100%; overflow: hidden; border: 1px solid var(--color-rule); border-radius: var(--radius-small); }
+.defaults-preview-note { transform-origin: top left; overflow: hidden; background: var(--paper-color); color: var(--color-ink); }
+.defaults-preview-toolbar { display: flex; align-items: center; gap: 8px; height: 50px; padding: 0 18px; border-bottom: 1px solid color-mix(in oklch, var(--color-ink) 15%, transparent); }
+.defaults-preview-toolbar span { width: 9px; height: 9px; border-radius: 50%; background: color-mix(in oklch, var(--color-ink) 25%, transparent); }
+.defaults-preview-content { padding: 18px; font-size: var(--reading-size); line-height: 1.6; }
+.defaults-preview-content h3 { margin: 0 0 16px; font-size: calc(var(--reading-size) + 2px); font-weight: 600; line-height: 1.5; }
+.defaults-preview-content p { margin: 0 0 1em; }
+.defaults-preview-task { display: flex; gap: 8px; }
+.defaults-preview > p { margin: var(--space-3) 0 0; text-align: center; font-variant-numeric: tabular-nums; }
+.defaults-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.defaults-actions .text-action { margin: 0; text-align: left; font-size: var(--text-xs); }
+.defaults-save-status { margin: 0; }
+.defaults-save-status:empty { display: none; }
+@media (min-width: 850px) {
+  .defaults-form { grid-template-columns: minmax(0, 1fr) 266px; }
+  .defaults-preview { align-self: start; }
+  .defaults-actions, .defaults-save-status { grid-column: 1 / -1; }
+}
+@media (forced-colors: active) {
+  .defaults-swatch-paper, .defaults-preview-frame { border-color: CanvasText; }
+  .defaults-swatch input:checked + .defaults-swatch-paper { color: HighlightText; background: Highlight; }
 }

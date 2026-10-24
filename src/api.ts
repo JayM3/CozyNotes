@@ -3,6 +3,9 @@ import type { JSONContent } from "@tiptap/core";
 
 export const paperColors = ["cream", "butter", "sage", "rose", "lavender", "mist"] as const;
 export type PaperColor = typeof paperColors[number];
+export type NoteFont = "source-sans-3" | "nunito";
+export type NoteFontSize = 12 | 14 | 16 | 18 | 20 | 24;
+export type NoteDefaults = { color: PaperColor; fontFamily: NoteFont; fontSize: NoteFontSize; width: number; height: number };
 export type View = "notes" | "trash";
 export type SnippetSegment = { text: string; matched: boolean };
 export type NoteSummary = {
@@ -16,6 +19,8 @@ export type NoteSummary = {
   snippet: SnippetSegment[];
 };
 export type Note = Omit<NoteSummary, "snippet"> & {
+  fontFamily: NoteFont;
+  fontSize: NoteFontSize;
   explicitTitle: string;
   document: JSONContent | null;
   documentError?: string | null;
@@ -24,11 +29,11 @@ export type Note = Omit<NoteSummary, "snippet"> & {
 export type NoteDraft = { document: JSONContent; explicitTitle: string };
 export type SavedImageAsset = { assetId: string; mimeType: string };
 export type LibraryFilter = { query: string; color: PaperColor | null };
-export type AppSettings = { runInBackground: boolean; rememberDesk: boolean; openOnStartup: boolean; trayAvailable: boolean; warning: string | null };
+export type AppSettings = { noteDefaults: NoteDefaults; runInBackground: boolean; rememberDesk: boolean; openOnStartup: boolean; trayAvailable: boolean; warning: string | null };
 export const sourceCodeUrl = "https://github.com/JayM3/CozyNotes";
 export type NoteWindowState = { width: number; height: number; x: number | null; y: number | null; folded: boolean; isOpen: boolean };
 export type HistoryEntry = { revision: number; savedAt: number; title: string; preview: string };
-export type HistoryVersion = Omit<HistoryEntry, "preview"> & { document: JSONContent; explicitTitle: string; plainText: string; color: PaperColor };
+export type HistoryVersion = Omit<HistoryEntry, "preview"> & { document: JSONContent; explicitTitle: string; plainText: string; color: PaperColor; fontFamily: NoteFont; fontSize: NoteFontSize };
 export type PlatformCapabilities = { absoluteWindowPosition: boolean; alwaysOnTop: boolean };
 
 export const notesApi = {
@@ -56,6 +61,7 @@ export const notesApi = {
   restore: (id: string) => invoke<void>("restore_note", { id }),
   purge: (id: string) => invoke<void>("purge_note", { id }),
   emptyTrash: () => invoke<void>("empty_trash"),
+  setNoteDefaults: (defaults: NoteDefaults) => invoke<NoteDefaults>("set_note_defaults", { defaults }),
   getSettings: () => invoke<AppSettings>("get_settings", {}),
   getPlatformCapabilities: () => invoke<PlatformCapabilities>("platform_capabilities", {}),
   takeAppError: () => invoke<string | null>("take_app_error", {}),

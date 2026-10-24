@@ -6,7 +6,7 @@ import { notesApi } from "./api";
 
 vi.mock("./api", () => ({ notesApi: { history: vi.fn(), historyVersion: vi.fn() } }));
 const entry = { revision: 4, savedAt: 1000, title: "Earlier title", preview: "Earlier text" };
-const version = { ...entry, explicitTitle: "Earlier title", plainText: "Earlier text", color: "sage" as const, document: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Earlier text" }] }] } };
+const version = { ...entry, fontFamily: "nunito" as const, fontSize: 20 as const, explicitTitle: "Earlier title", plainText: "Earlier text", color: "sage" as const, document: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Earlier text" }] }] } };
 
 describe("note history", () => {
   beforeEach(() => {
@@ -21,6 +21,8 @@ describe("note history", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Earlier title/ }));
     const button = await screen.findByRole("button", { name: "Restore as new note" });
     expect(screen.getByLabelText("Saved note content").getAttribute("contenteditable")).toBe("false");
+    expect(screen.getByLabelText("Saved note content").closest(".history-preview")?.getAttribute("style")).toContain("20px");
+    expect(screen.getByLabelText("Saved note content").closest(".history-preview")?.getAttribute("style")).toContain("Nunito");
     expect(notesApi.historyVersion).toHaveBeenCalledWith("original", 4);
     fireEvent.click(button);
     await waitFor(() => expect(restore).toHaveBeenCalledWith(4));

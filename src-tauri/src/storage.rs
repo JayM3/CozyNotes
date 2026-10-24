@@ -4,11 +4,13 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{fs, path::Path};
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Note {
+    pub font_family: String,
+    pub font_size: u8,
     pub favorite: bool,
     pub id: String,
     pub document: Option<Value>,
@@ -156,9 +158,10 @@ fn migrate(connection: &mut Connection, path: &Path, version: i64) -> Result<(),
             .execute_batch("ALTER TABLE notes ADD COLUMN explicit_title TEXT NOT NULL DEFAULT '';")
             .map_err(|error| error.to_string())?;
     }
-    transaction
-        .execute_batch(
-            "
+    if version < 3 {
+        transaction
+            .execute_batch(
+                "
         ALTER TABLE notes ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;
         CREATE TABLE note_history (
             note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
@@ -174,8 +177,15 @@ fn migrate(connection: &mut Connection, path: &Path, version: i64) -> Result<(),
             is_open INTEGER NOT NULL DEFAULT 0
         );
     ",
-        )
-        .map_err(|error| error.to_string())?;
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    if version < 4 {
+        transaction.execute_batch("ALTER TABLE notes ADD COLUMN font_family TEXT NOT NULL DEFAULT 'source-sans-3' CHECK(font_family IN ('source-sans-3','nunito'));
+            ALTER TABLE notes ADD COLUMN font_size INTEGER NOT NULL DEFAULT 16 CHECK(font_size IN (12,14,16,18,20,24));
+            ALTER TABLE note_history ADD COLUMN font_family TEXT NOT NULL DEFAULT 'source-sans-3' CHECK(font_family IN ('source-sans-3','nunito'));
+            ALTER TABLE note_history ADD COLUMN font_size INTEGER NOT NULL DEFAULT 16 CHECK(font_size IN (12,14,16,18,20,24));").map_err(|error| error.to_string())?;
+    }
     transaction
         .execute_batch("CREATE INDEX IF NOT EXISTS notes_recent ON notes(updated_at DESC, id);")
         .map_err(|error| error.to_string())?;
@@ -186,13 +196,13 @@ fn migrate(connection: &mut Connection, path: &Path, version: i64) -> Result<(),
 }
 
 pub fn load_note(connection: &Connection, id: &str, include_trashed: bool) -> Result<Note, String> {
-    connection.query_row("SELECT id, document_json, plain_text, title, preview, color, revision, updated_at, explicit_title, favorite FROM notes WHERE id=?1 AND (?2 OR trashed_at IS NULL)", params![id, include_trashed], |row| {
+    connection.query_row("SELECT id, document_json, plain_text, title, preview, color, revision, updated_at, explicit_title, favorite, font_family, font_size FROM notes WHERE id=?1 AND (?2 OR trashed_at IS NULL)", params![id, include_trashed], |row| {
         let raw: String = row.get(1)?;
         let (document, document_error) = match parsed_document(&raw) {
             Ok(document) => (Some(document), None),
             Err(error) => (None, Some(error)),
         };
-        Ok(Note { id: row.get(0)?, document, plain_text: row.get(2)?, title: row.get(3)?, preview: row.get(4)?, color: row.get(5)?, revision: row.get(6)?, updated_at: row.get(7)?, explicit_title: row.get(8)?, favorite: row.get(9)?, document_error })
+        Ok(Note { id: row.get(0)?, document, plain_text: row.get(2)?, title: row.get(3)?, preview: row.get(4)?, color: row.get(5)?, revision: row.get(6)?, updated_at: row.get(7)?, explicit_title: row.get(8)?, favorite: row.get(9)?, font_family: row.get(10)?, font_size: row.get(11)?, document_error })
     }).optional().map_err(|error| error.to_string())?.ok_or_else(|| "Note not found".into())
 }
 
@@ -367,6 +377,51 @@ pub fn purge_notes_batch(connection: &mut Connection, ids: &[&str]) -> Result<()
     transaction.commit().map_err(|error| error.to_string())
 }
 
+pub struct NewNote<'a> {
+    pub id: &'a str,
+    pub document: &'a Value,
+    pub color: &'a str,
+    pub font_family: &'a str,
+    pub font_size: u8,
+    pub timestamp: i64,
+    pub explicit_title: &'a str,
+}
+
+pub fn insert_note_with_placement(
+    connection: &Connection,
+    new: NewNote<'_>,
+    placement: &crate::desk::Placement,
+) -> Result<Note, String> {
+    document::validate(new.document)?;
+    validate_title(new.explicit_title)?;
+    if !valid_color(new.color) {
+        return Err("Invalid paper color".into());
+    }
+    if !crate::note_defaults::valid_font(new.font_family)
+        || !crate::note_defaults::valid_font_size(new.font_size)
+    {
+        return Err("Invalid note typography".into());
+    }
+    if !placement.width.is_finite()
+        || !placement.height.is_finite()
+        || placement.width < crate::desk::MIN_WIDTH
+        || placement.height < crate::desk::MIN_HEIGHT
+    {
+        return Err("Invalid note dimensions".into());
+    }
+    let text = document::plain_text(new.document);
+    let (title, preview, search_text) = note_metadata(new.explicit_title, &text);
+    let transaction =
+        rusqlite::Transaction::new_unchecked(connection, TransactionBehavior::Immediate)
+            .map_err(|e| e.to_string())?;
+    transaction.execute("INSERT INTO notes (id, document_json, plain_text, color, revision, created_at, updated_at, search_text, title, preview, explicit_title, font_family, font_size) VALUES (?1,?2,?3,?4,0,?5,?5,?6,?7,?8,?9,?10,?11)", params![new.id, new.document.to_string(), text, new.color, new.timestamp, search_text, title, preview, new.explicit_title, new.font_family, new.font_size]).map_err(|error| error.to_string())?;
+    crate::desk::save(&transaction, new.id, placement)?;
+    let note = load_note(&transaction, new.id, false)?;
+    transaction.commit().map_err(|e| e.to_string())?;
+    Ok(note)
+}
+
+#[cfg(test)]
 pub fn insert_note(
     connection: &Connection,
     id: &str,
@@ -375,15 +430,19 @@ pub fn insert_note(
     timestamp: i64,
     explicit_title: &str,
 ) -> Result<Note, String> {
-    document::validate(document)?;
-    validate_title(explicit_title)?;
-    if !valid_color(color) {
-        return Err("Invalid paper color".into());
-    }
-    let text = document::plain_text(document);
-    let (title, preview, search_text) = note_metadata(explicit_title, &text);
-    connection.execute("INSERT INTO notes (id, document_json, plain_text, color, revision, created_at, updated_at, search_text, title, preview, explicit_title) VALUES (?1,?2,?3,?4,0,?5,?5,?6,?7,?8,?9)", params![id, document.to_string(), text, color, timestamp, search_text, title, preview, explicit_title]).map_err(|error| error.to_string())?;
-    load_note(connection, id, false)
+    insert_note_with_placement(
+        connection,
+        NewNote {
+            id,
+            document,
+            color,
+            timestamp,
+            explicit_title,
+            font_family: crate::note_defaults::DEFAULT_FONT,
+            font_size: crate::note_defaults::DEFAULT_FONT_SIZE,
+        },
+        &crate::desk::Placement::default(),
+    )
 }
 
 pub fn save_document(

@@ -66,6 +66,29 @@ pub fn save(connection: &Connection, id: &str, p: &Placement) -> Result<(), Stri
     Ok(())
 }
 
+pub fn copy_placement(
+    app: &tauri::AppHandle,
+    connection: &Connection,
+    id: &str,
+) -> Result<Placement, String> {
+    let cached = app
+        .state::<Desk>()
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .get(id)
+        .cloned();
+    let source = match cached {
+        Some(value) => value,
+        None => load(connection, id)?,
+    };
+    Ok(Placement {
+        width: source.width,
+        height: source.height,
+        ..Default::default()
+    })
+}
+
 pub fn open_ids(connection: &Connection) -> Result<Vec<String>, String> {
     let mut query = connection.prepare("SELECT w.note_id FROM note_windows w JOIN notes n ON n.id=w.note_id WHERE w.is_open=1 AND n.trashed_at IS NULL ORDER BY w.note_id").map_err(|e|e.to_string())?;
     query

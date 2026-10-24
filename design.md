@@ -23,12 +23,15 @@ The supplied sidebar artwork keeps a light backing in Night mode so its cocoa wo
 
 - Display: Nunito 600/700 for headings and compact labels
 - Body: Source Sans 3 for controls, metadata, and note text
-- Note reading sizes: 12, 14, 16, 18, 20, and 24px
+- Notes can start in Source Sans 3 or Nunito, with regular, bold, and italic styles bundled locally. Note fonts apply to writing surfaces and titles; application controls retain their own fonts.
+- Note base reading sizes: 12, 14, 16, 18, 20, and 24px. Temporary reading adjustments reset to the note’s saved base when reopened or with Ctrl+0.
 
 ## Surfaces
 
 - The library uses a narrow brand rail and a searchable note workspace.
 - Settings opens in the right pane, with the rail providing the same Notes and Trash navigation.
+- New note defaults sits between Appearance and App behavior, with named paper swatches, font/text-size selects, size presets/custom dimensions, a scaled preview, Save defaults, and a factory reset that fills the draft. Saving snapshots the defaults for future blank notes; existing notes retain their own appearance.
+- Default dimensions use logical pixels, from 305–1600 wide and 240–1600 high. Presets are Classic (305 × 385), Roomy (400 × 500), and Large (520 × 640). Actual windows fit the monitor; explicit border-double-click resets use the current saved defaults.
 - Circular checkboxes at the right of each row retain the paper color and show a checkmark when selected. Selection actions operate on the current visible results.
 - Note windows keep the paper color as the writing canvas and use compact icon controls.
 - Existing Cream, Butter, Sage, Rose, Lavender, and Mist note colors remain available.

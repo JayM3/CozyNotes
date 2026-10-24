@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Settings } from "./Settings";
 import { ThemeProvider } from "./theme";
 
-const mocks = vi.hoisted(() => ({ getSettings: vi.fn(), setRunInBackground: vi.fn(), setRememberDesk: vi.fn(), setOpenOnStartup: vi.fn(), check: vi.fn(), relaunch: vi.fn() }));
-vi.mock("./api", () => ({ notesApi: { getSettings: mocks.getSettings, setRunInBackground: mocks.setRunInBackground, setRememberDesk: mocks.setRememberDesk, setOpenOnStartup: mocks.setOpenOnStartup } }));
+const mocks = vi.hoisted(() => ({ getSettings: vi.fn(), setNoteDefaults: vi.fn(), setRunInBackground: vi.fn(), setRememberDesk: vi.fn(), setOpenOnStartup: vi.fn(), check: vi.fn(), relaunch: vi.fn() }));
+vi.mock("./api", async importOriginal => ({ ...await importOriginal<typeof import("./api")>(), notesApi: { setNoteDefaults: mocks.setNoteDefaults, getSettings: mocks.getSettings, setRunInBackground: mocks.setRunInBackground, setRememberDesk: mocks.setRememberDesk, setOpenOnStartup: mocks.setOpenOnStartup } }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
 
