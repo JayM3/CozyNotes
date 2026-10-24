@@ -734,8 +734,15 @@ mod tests {
     fn saved_defaults_update_live_reset_dimensions_at_supported_display_scales() {
         for display_scale in [1.0, 1.5, 2.0] {
             TEST_SCALE.with(|value| value.set(Some(display_scale)));
-            let window =
-                TestWindow::with_style(-2000, -2000, 700, 600, WS_POPUP | WS_THICKFRAME, true);
+            let area = work_areas()[0];
+            let window = TestWindow::with_style(
+                area.left + 40,
+                area.top + 40,
+                700,
+                600,
+                WS_POPUP | WS_THICKFRAME,
+                true,
+            );
             let data = unsafe { GetPropW(window.0, STATE_PROPERTY) };
             let state = unsafe { &*data.cast::<WindowState>() };
             let before = client_rect(window.0).unwrap();
@@ -751,9 +758,8 @@ mod tests {
                 let current = client_rect(window.0).unwrap();
                 let result = window.double_click_border(HTBOTTOMRIGHT);
                 assert_eq!((result.left, result.top), (before.left, before.top));
-                let area = work_areas()[0];
-                let expected_width = ((width as f64 * display_scale).round() as i32)
-                    .min(area.right - before.left);
+                let expected_width =
+                    ((width as f64 * display_scale).round() as i32).min(area.right - before.left);
                 let expected_height =
                     ((height as f64 * display_scale).round() as i32).min(area.bottom - before.top);
                 assert_eq!(result.right - result.left, expected_width);
