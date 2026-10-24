@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Library } from "./Library";
 import { ThemeProvider } from "./theme";
+import { UPDATE_CHECK_INTERVAL_MS } from "./useAppUpdates";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -19,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   setRunInBackground: vi.fn(),
   takeAppError: vi.fn(),
   startDragging: vi.fn(),
+  check: vi.fn(),
+  relaunch: vi.fn(),
   events: [] as Array<{ name: string; handler: (event: { payload: unknown }) => void }>,
 }));
 
@@ -48,6 +51,8 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.fn().mockResolvedValue(undefined), startDragging: mocks.startDragging }) }));
+vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
+vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
 
 type Summary = { favorite: boolean; id: string; title: string; preview: string; color: string; revision: number; updatedAt: number; snippet: never[] };
 let activeNotes: Summary[];
@@ -91,10 +96,48 @@ describe("library settings and selection", () => {
     mocks.setRunInBackground.mockReset().mockImplementation(async (enabled: boolean) => { settings = { ...settings, runInBackground: enabled }; return settings; });
     mocks.takeAppError.mockReset().mockResolvedValue(null);
     mocks.startDragging.mockReset().mockResolvedValue(undefined);
+    mocks.check.mockReset().mockResolvedValue(null);
+    mocks.relaunch.mockReset().mockResolvedValue(undefined);
     mocks.events.length = 0;
   });
 
-  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it("shows automatic updates beside Settings and preserves installation across page changes", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    let finishInstall!: () => void;
+    const update = {
+      version: "0.3.0",
+      close: vi.fn().mockResolvedValue(undefined),
+      downloadAndInstall: vi.fn(() => new Promise<void>(resolve => { finishInstall = resolve; })),
+    };
+    mocks.check.mockResolvedValueOnce(null).mockResolvedValueOnce(update);
+    renderLibrary();
+    await act(() => vi.advanceTimersByTimeAsync(150));
+    expect(screen.queryByText("Update available")).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(UPDATE_CHECK_INTERVAL_MS));
+    const settingsButton = screen.getByRole("button", { name: "Settings" });
+    expect(within(settingsButton).getByText("Update available")).toBeTruthy();
+    expect(settingsButton.getAttribute("aria-describedby")).toBe("settings-update-status");
+    expect(update.downloadAndInstall).not.toHaveBeenCalled();
+
+    await act(async () => { fireEvent.click(screen.getByText("Update available")); });
+    expect(screen.getByRole("button", { name: "Update to 0.3.0" })).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Notes" })); });
+    await act(async () => { fireEvent.click(settingsButton); });
+    expect(screen.getByRole("button", { name: "Update to 0.3.0" })).toBeTruthy();
+    expect(mocks.check).toHaveBeenCalledTimes(2);
+    expect(update.close).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Update to 0.3.0" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Trash" })); });
+    await act(async () => { fireEvent.click(settingsButton); });
+    expect((screen.getByRole("button", { name: "Installing..." }) as HTMLButtonElement).disabled).toBe(true);
+    expect(update.close).not.toHaveBeenCalled();
+    await act(async () => { finishInstall(); });
+    expect(update.downloadAndInstall).toHaveBeenCalledTimes(1);
+  });
 
   it.each(["Notes", "Trash", "Settings"])("drags the main menu from the blank area above the %s heading", async page => {
     renderLibrary();

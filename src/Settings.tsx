@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Download, RefreshCw } from "lucide-react";
 import { notesApi } from "./api";
 import type { AppSettings } from "./api";
 import { NewNoteDefaults } from "./NewNoteDefaults";
 import { factoryNoteDefaults } from "./noteDefaults";
 import { ThemePicker } from "./ThemePicker";
-
-type UpdateState = "idle" | "checking" | "current" | "available" | "installing" | "error";
+import type { AppUpdates } from "./useAppUpdates";
 
 function errorText(error: unknown) {
   if (typeof error === "string" && error.trim()) return error;
@@ -16,16 +13,13 @@ function errorText(error: unknown) {
   return "Please try again.";
 }
 
-export function Settings() {
+export function Settings({ updates }: { updates: AppUpdates }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
-  const [updateState, setUpdateState] = useState<UpdateState>("idle");
-  const [updateVersion, setUpdateVersion] = useState("");
-  const [updateError, setUpdateError] = useState("");
-  const updateRef = useRef<Update | null>(null);
+  const { status: updateState, version: updateVersion, error: updateError, checkForUpdates, installUpdate } = updates;
   const request = useRef(0);
   const descriptionId = useId();
 
@@ -47,45 +41,8 @@ export function Settings() {
     void loadSettings();
     return () => {
       request.current++;
-      void updateRef.current?.close().catch(() => undefined);
     };
   }, [loadSettings]);
-
-  const checkForUpdates = async () => {
-    if (updateState === "checking" || updateState === "installing") return;
-    setUpdateState("checking");
-    setUpdateError("");
-    setUpdateVersion("");
-    await updateRef.current?.close().catch(() => undefined);
-    updateRef.current = null;
-    try {
-      const update = await check();
-      if (!update) {
-        setUpdateState("current");
-        return;
-      }
-      updateRef.current = update;
-      setUpdateVersion(update.version);
-      setUpdateState("available");
-    } catch (reason) {
-      setUpdateState("error");
-      setUpdateError(errorText(reason));
-    }
-  };
-
-  const installUpdate = async () => {
-    const update = updateRef.current;
-    if (!update || updateState === "installing") return;
-    setUpdateState("installing");
-    setUpdateError("");
-    try {
-      await update.downloadAndInstall(undefined, { restartAfterInstall: true });
-      if (!navigator.userAgent.includes("Windows")) await relaunch();
-    } catch (reason) {
-      setUpdateState("error");
-      setUpdateError(errorText(reason));
-    }
-  };
 
   const updateBackground = async (enabled: boolean) => {
     if (!settings || saving || !settings.trayAvailable) return;
@@ -179,14 +136,16 @@ export function Settings() {
       <div className="update-setting">
         <div className="background-copy">
           <strong>CozyNotes updates</strong>
-          <p>{updateState === "available" ? `Version ${updateVersion} is ready to install.` : updateState === "current" ? "You're using the latest version." : updateState === "error" ? "Check failed. Try again." : "Check GitHub for the latest CozyNotes release."}</p>
+          <p>{updateState === "installing" ? `Installing version ${updateVersion}.` : updateVersion ? `Version ${updateVersion} is ready to install.` : updateState === "current" ? "You're using the latest version." : updateState === "error" ? "Check failed. Try again." : "Check GitHub for the latest CozyNotes release."}</p>
         </div>
-        {updateState === "available"
-          ? <button className="update-button" onClick={() => void installUpdate()} disabled={updateState !== "available"}><Download size={15} /> Update to {updateVersion}</button>
-          : <button className="update-button secondary" onClick={() => void checkForUpdates()} disabled={updateState === "checking" || updateState === "installing"}><RefreshCw size={15} /> {updateState === "checking" ? "Checking..." : "Check for updates"}</button>}
+        <button className={`update-button${updateVersion ? "" : " secondary"}`} onClick={() => void (updateVersion ? installUpdate() : checkForUpdates())} disabled={updateState === "checking" || updateState === "installing"}>
+          {updateVersion ? <Download size={15} aria-hidden="true" /> : <RefreshCw size={15} aria-hidden="true" />}
+          {updateState === "installing" ? "Installing..." : updateState === "checking" ? "Checking..." : updateVersion ? `Update to ${updateVersion}` : "Check for updates"}
+        </button>
       </div>
+      <p className="settings-state">CozyNotes checks GitHub on startup and every 3 hours while running.</p>
       {updateState === "installing" && <p className="settings-state" role="status">Downloading update...</p>}
-      {updateState === "error" && <p className="settings-error" role="alert">Couldn't check for updates. {updateError}</p>}
+      {updateError && <p className="settings-error" role="alert">{updateError}</p>}
     </section>
   </div>;
 }

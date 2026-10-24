@@ -1,6 +1,6 @@
 [package]
 name = "cozynotes"
-version = "0.2.11"
+version = "0.2.12"
 description = "An offline-first desktop notes app"
 license = "MIT"
 publish = false

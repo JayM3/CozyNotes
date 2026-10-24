@@ -8,6 +8,7 @@ import { version } from "../package.json";
 import type { LibraryFilter, View } from "./api";
 import { Settings } from "./Settings";
 import { useLibrarySearch } from "./useLibrarySearch";
+import { useAppUpdates } from "./useAppUpdates";
 import { startWindowDrag } from "./windowDrag";
 import cozyLogo from "./assets/cozynotes-logo.png";
 
@@ -33,6 +34,7 @@ function errorText(error: unknown, fallback: string) {
 }
 
 export function Library() {
+  const updates = useAppUpdates();
   const [page, setPage] = useState<Page>("notes");
   const [view, setView] = useState<View>("notes");
   const [filters, setFilters] = useState<Record<View, LibraryFilter>>({ notes: { query: "", color: null }, trash: { query: "", color: null } });
@@ -336,7 +338,10 @@ export function Library() {
         <button className={page === "trash" ? "nav-item active" : "nav-item"} aria-current={page === "trash" ? "page" : undefined} aria-label="Trash" title="Trash" onClick={() => navigate("trash")} disabled={controlsLocked}><Trash2 size={16} /> Trash</button>
       </nav>
       <div className="rail-bottom">
-        <button className={page === "settings" ? "nav-item active settings-nav" : "nav-item settings-nav"} aria-current={page === "settings" ? "page" : undefined} aria-label="Settings" title="Settings" onClick={() => navigate("settings")} disabled={controlsLocked}><SettingsIcon size={16} /> Settings</button>
+        <button className={page === "settings" ? "nav-item active settings-nav" : "nav-item settings-nav"} aria-current={page === "settings" ? "page" : undefined} aria-label="Settings" aria-describedby={updates.version ? "settings-update-status" : undefined} title={updates.version ? "Settings — update available" : "Settings"} onClick={() => navigate("settings")} disabled={controlsLocked}>
+          <SettingsIcon size={16} aria-hidden="true" /><span>Settings</span>
+          {updates.version && <span id="settings-update-status" className="settings-update-badge" role="status">Update available</span>}
+        </button>
         <div className="rail-foot"><span>v{version}</span><button className="source-link" type="button" onClick={() => void open(sourceCodeUrl).catch(() => setActionError("Couldn't open Source code."))} title="Open Source code" aria-label="Open Source code"><GithubMark /><span className="source-label">Source code</span></button></div>
       </div>
     </aside>
@@ -348,7 +353,7 @@ export function Library() {
         </header>
       </div>
       {displayError && <p className="error-banner" role="alert">{displayError} {error && page !== "settings" && <button className="text-action" onClick={() => void refresh()} disabled={controlsLocked}>Retry</button>}</p>}
-      {page === "settings" ? <Settings /> : <>
+      {page === "settings" ? <Settings updates={updates} /> : <>
         <label className="search-box"><Search size={17} /><input ref={search} type="search" aria-label={view === "notes" ? "Search notes" : "Search trash"} placeholder={view === "notes" ? "Search your notes" : "Search trash"} value={filter.query} onChange={event => updateFilter({ query: event.target.value })} disabled={controlsLocked} /></label>
         <div className="color-filters" role="group" aria-label="Filter by paper color">
           <button className="all-colors" aria-pressed={filter.color === null} onClick={() => updateFilter({ color: null })} disabled={controlsLocked}>All colors</button>

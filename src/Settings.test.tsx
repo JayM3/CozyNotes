@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Settings } from "./Settings";
 import { ThemeProvider } from "./theme";
+import { useAppUpdates } from "./useAppUpdates";
 
 const mocks = vi.hoisted(() => ({ getSettings: vi.fn(), setNoteDefaults: vi.fn(), setRunInBackground: vi.fn(), setRememberDesk: vi.fn(), setOpenOnStartup: vi.fn(), check: vi.fn(), relaunch: vi.fn() }));
 vi.mock("./api", async importOriginal => ({ ...await importOriginal<typeof import("./api")>(), notesApi: { setNoteDefaults: mocks.setNoteDefaults, getSettings: mocks.getSettings, setRunInBackground: mocks.setRunInBackground, setRememberDesk: mocks.setRememberDesk, setOpenOnStartup: mocks.setOpenOnStartup } }));
@@ -10,7 +11,11 @@ vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
 
 function renderSettings() {
-  return render(<ThemeProvider><Settings /></ThemeProvider>);
+  function SettingsWithUpdates() {
+    const updates = useAppUpdates();
+    return <Settings updates={updates} />;
+  }
+  return render(<ThemeProvider><SettingsWithUpdates /></ThemeProvider>);
 }
 
 describe("Settings", () => {
@@ -97,5 +102,17 @@ describe("Settings", () => {
     fireEvent.click(install);
     await waitFor(() => expect(update.downloadAndInstall).toHaveBeenCalledWith(undefined, { restartAfterInstall: true }));
     expect(mocks.relaunch).toHaveBeenCalled();
+  });
+
+  it("keeps the install button available after a download fails", async () => {
+    const update = { version: "0.3.0", downloadAndInstall: vi.fn().mockRejectedValueOnce(new Error("Download interrupted")).mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) };
+    mocks.check.mockResolvedValueOnce(update);
+    renderSettings();
+    fireEvent.click(await screen.findByRole("button", { name: "Check for updates" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Update to 0.3.0" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Couldn't install the update. Download interrupted");
+    fireEvent.click(screen.getByRole("button", { name: "Update to 0.3.0" }));
+    await waitFor(() => expect(update.downloadAndInstall).toHaveBeenCalledTimes(2));
+    expect(mocks.check).toHaveBeenCalledTimes(1);
   });
 });

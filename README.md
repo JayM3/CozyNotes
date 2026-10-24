@@ -16,12 +16,12 @@ See the [default note settings verification record](docs/2026-10-24-default-note
 
 See the [Windows support scope and verification record](docs/2026-10-19-windows-support.md) for the delivery changes and local checks.
 
-**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.11
+**[Download CozyNotes](https://github.com/JayM3/CozyNotes/releases/latest)** · Early development, v0.2.12
 
 - Rich text, checklists, images, ink drawings, and autosave.
 - Colored paper, light and dark themes, and favorites.
 - Foldable notes, saved window layouts, Trash, and note history.
-- In-app update checks and one-click installation from Settings.
+- Automatic GitHub update checks on startup and every three hours, with one-click installation from Settings.
 
 <details>
 <summary>Features</summary>
@@ -56,6 +56,8 @@ With Run in background enabled, closing the main window keeps CozyNotes availabl
 The **Settings** button in the sidebar opens preferences in the right pane. **New note defaults** lets you choose paper color, Source Sans 3 or Nunito, a starting text size, and a preset or custom window size. Preview your choices, then select **Save defaults**. **Reset to CozyNotes defaults** fills the form with factory values; save to apply them. Defaults affect newly created blank notes. Existing notes retain their appearance and saved arrangement; duplicates copy the source appearance and expanded dimensions, and history restores use the saved version’s typography. Window sizes fit the available screen. Reading-size buttons and Ctrl + + / - are temporary; Ctrl + 0 and reopening return to the note’s saved base size.
 
 App behavior preferences share the same Settings page. Enable **Open on startup** to launch CozyNotes when you sign in. Turn off **Run in background** to exit normally when the last window closes. **Remember my desk** controls whether notes left open at exit are reopened next time.
+
+CozyNotes checks GitHub for updates when it starts and every three hours while running. An **Update available** label appears beside Settings when a newer release is found, and **Check for updates** becomes **Update to [version]**. The result stays available as you switch pages. After sleep, an overdue check runs when the library becomes active again. Background connection failures stay quiet and retry later; you can still check manually in Settings. Updates download and install only when you choose the update button.
 
 Select a note using its circle without opening it. The selection bar shows the count and provides **Select all**, **Clear selection**, and **Move to Trash**. In Trash, **Delete selected** asks for confirmation before permanently deleting the selection. Changing the search, paper-color filter, or page clears the selection.
 
